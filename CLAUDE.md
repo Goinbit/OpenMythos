@@ -277,6 +277,45 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · Stage 4.1 · main.py 拆分成模块树
+
+**分支:** `main` · **commits:** `8e0fa10` + 本日志条目
+**Agents:** 1 个(general-purpose,按固定蓝图执行 17 文件创建 + main.py 重写)
+**完成 IDs:** **P4.1**(阶段 4 第一项,主 refactor)
+
+### ✅ 完成
+- **main.py 1199 行 → 88 行薄 shim**,所有代码迁移到 13 个子模块
+- 新目录树(全部 ≤400 行,最大 model.py 203):
+  - `config.py` 97 — MythosConfig
+  - `primitives/{norm,rope,expert}.py` — RMSNorm / RoPE utils / Expert
+  - `attention/{gqa,mla}.py` — GQAttention / MLAttention
+  - `moe.py` 108 — MoEFFN
+  - `blocks.py` 69 — TransformerBlock
+  - `recurrence/{lora,lti,act,block}.py` — LoRAAdapter / LTIInjection / ACTHalting / RecurrentBlock
+  - `model.py` 203 — OpenMythos + generate
+- `main.py` 成为 `_ForwardingModule` 薄转发层,`__setattr__` 对 `apply_rope` / `precompute_rope_freqs` / `loop_index_embedding` 扇出到实际持有引用的子模块(保护两个 monkeypatch 测试不被破坏)
+- `__init__.py` 零改动 —— 通过 main.py shim 的 re-export 链兼容所有既有 `from open_mythos import X` 和 `from open_mythos.main import X`
+
+### 📊 测试变化
+- before: 166 passed / 4 skipped
+- after: **166 passed / 4 skipped** — 完全 bit-exact,无任何测试修改
+
+### 🔑 关键决策 / 发现
+- **纯 relocation,零行为改动** — P4.1 验收要求"所有既有测试无修改即通过",达成
+- **Monkey-patch 兼容是唯一非平凡部分** — `test_gqa_decode_no_causal_mask` 和 `test_rope_generate_uses_increasing_start_pos` patch `open_mythos.main.apply_rope` / `.F` 这类属性。重写后的 main.py 装了 `_ForwardingModule.__setattr__` 把 patch 广播到新持有引用的模块。这个设计避免了改测试代码
+- **绝对 import 策略** (`from open_mythos.primitives.rope import apply_rope`) 而非相对 —— 一致于项目既有的 `from open_mythos.kv_cache import StaticKVCache` 风格
+- **无循环依赖** — 依赖图:config → primitives → attention/moe → blocks → recurrence → model
+- **moda.py 保持 1069 行** — 独立 scope,不在本阶段拆分范围(Stage 4.2 才去重)
+
+### 🧭 留到下阶段
+- **Stage 4.2** — moda.py 把 `RMSNorm` / `Expert` 改从 `open_mythos.primitives` 导入(现在 primitives 模块就位了,去重可行)
+- **Stage 4.3** — 定义 `AttentionProtocol` / `RouterProtocol` / `InjectionProtocol` 扩展点,`build_attention(cfg)` 工厂替代硬编码分支
+- **Stage 4.4** — `MythosConfig` 嵌套拆分(AttentionConfig / MoEConfig / RecurrenceConfig)
+- **Stage 4.5** — training 脚本模块化
+- **GitHub Actions CI** — 把 166 测试变 PR 闸
+
+---
+
 ## 2026-04-23 · P3.3 合并 + 收尾小优化(loop_dim / moda 清理 / moda MoE 向量化)
 
 **分支:** `main` · **commits:** 5 个,规划中 commit
