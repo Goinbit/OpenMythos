@@ -399,6 +399,19 @@ class TestLoopIndexEmbedding:
         # channels beyond loop_dim should be unchanged (still 0)
         assert torch.all(out[..., loop_dim:] == 0)
 
+    def test_odd_loop_dim_raises(self):
+        # Odd loop_dim would produce an asymmetric sin/cos split —
+        # the function must reject it at the call site.
+        h = torch.zeros(1, 1, 64)
+        with pytest.raises(ValueError, match="loop_dim must be even"):
+            loop_index_embedding(h, loop_t=0, loop_dim=7)
+
+    def test_recurrent_block_rejects_dim_not_multiple_of_16(self):
+        # cfg.dim=24 → loop_dim = 24//8 = 3 (odd) → must raise at construction.
+        cfg = gqa_cfg(dim=24, n_heads=4, n_kv_heads=2)
+        with pytest.raises(ValueError, match="loop_dim"):
+            RecurrentBlock(cfg)
+
 
 # ---------------------------------------------------------------------------
 # LoRAAdapter
