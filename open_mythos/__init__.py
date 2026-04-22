@@ -15,6 +15,7 @@ from open_mythos.main import (
     loop_index_embedding,
     precompute_rope_freqs,
 )
+from open_mythos.kv_cache import StaticKVCache
 from open_mythos.tokenizer import MythosTokenizer
 from open_mythos.variants import (
     mythos_1b,
@@ -50,4 +51,5 @@ __all__ = [
     "mythos_500b",
     "mythos_1t",
     "MythosTokenizer",
+    "StaticKVCache",
 ]

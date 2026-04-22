@@ -1,10 +1,12 @@
 import warnings
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from open_mythos.kv_cache import StaticKVCache
 
 
 @dataclass(frozen=True)
@@ -234,7 +236,7 @@ class GQAttention(nn.Module):
         x: torch.Tensor,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
-        kv_cache: Optional[dict] = None,
+        kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         cache_key: str = "default",
     ) -> torch.Tensor:
         """
@@ -256,15 +258,19 @@ class GQAttention(nn.Module):
         q = apply_rope(q, freqs_cis)
         k = apply_rope(k, freqs_cis)
 
-        # TODO P3.3 deferred: static pre-allocated KV cache. Requires threading
-        # start_pos and max_seq_len through every TransformerBlock call and
-        # every recurrent cache_key; the refactor is invasive and numerically
-        # sensitive, so left as a follow-up to avoid breaking P3.1/P3.2.
+        # P3.3: StaticKVCache writes the new chunk at the current position
+        # and returns the cumulative prefix (no torch.cat, no reallocation).
+        # The legacy dict path is preserved for tests written against the
+        # pre-P3.3 API.
         if kv_cache is not None:
-            if cache_key in kv_cache:
-                k = torch.cat([kv_cache[cache_key]["k"], k], dim=1)
-                v = torch.cat([kv_cache[cache_key]["v"], v], dim=1)
-            kv_cache[cache_key] = {"k": k.detach(), "v": v.detach()}
+            if isinstance(kv_cache, StaticKVCache):
+                k = kv_cache.write_and_read(f"{cache_key}:k", k)
+                v = kv_cache.write_and_read(f"{cache_key}:v", v)
+            else:
+                if cache_key in kv_cache:
+                    k = torch.cat([kv_cache[cache_key]["k"], k], dim=1)
+                    v = torch.cat([kv_cache[cache_key]["v"], v], dim=1)
+                kv_cache[cache_key] = {"k": k.detach(), "v": v.detach()}
 
         # P3.1: use fused scaled-dot-product attention (SDPA / FlashAttention).
         # SDPA expects (B, H, T, D). We still carry GQA's fewer KV heads; SDPA's
@@ -377,7 +383,7 @@ class MLAttention(nn.Module):
         x: torch.Tensor,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
-        kv_cache: Optional[dict] = None,
+        kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         cache_key: str = "default",
     ) -> torch.Tensor:
         """
@@ -413,11 +419,16 @@ class MLAttention(nn.Module):
         )
         k_rope = apply_rope(k_rope, freqs_cis)  # (B, T, H, rope_dim) ← cached
 
+        # P3.3: StaticKVCache fast path (no torch.cat reallocation).
         if kv_cache is not None:
-            if cache_key in kv_cache:
-                c_kv = torch.cat([kv_cache[cache_key]["c_kv"], c_kv], dim=1)
-                k_rope = torch.cat([kv_cache[cache_key]["k_rope"], k_rope], dim=1)
-            kv_cache[cache_key] = {"c_kv": c_kv.detach(), "k_rope": k_rope.detach()}
+            if isinstance(kv_cache, StaticKVCache):
+                c_kv = kv_cache.write_and_read(f"{cache_key}:c_kv", c_kv)
+                k_rope = kv_cache.write_and_read(f"{cache_key}:k_rope", k_rope)
+            else:
+                if cache_key in kv_cache:
+                    c_kv = torch.cat([kv_cache[cache_key]["c_kv"], c_kv], dim=1)
+                    k_rope = torch.cat([kv_cache[cache_key]["k_rope"], k_rope], dim=1)
+                kv_cache[cache_key] = {"c_kv": c_kv.detach(), "k_rope": k_rope.detach()}
 
         S = c_kv.shape[1]  # full sequence length including cache
 
@@ -717,7 +728,7 @@ class TransformerBlock(nn.Module):
         x: torch.Tensor,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
-        kv_cache: Optional[dict] = None,
+        kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         cache_key: str = "default",
     ) -> torch.Tensor:
         """
@@ -908,7 +919,7 @@ class RecurrentBlock(nn.Module):
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
         n_loops: Optional[int] = None,
-        kv_cache: Optional[dict] = None,
+        kv_cache: Optional[Union[dict, StaticKVCache]] = None,
     ) -> torch.Tensor:
         """
         Run the recurrent loop for up to n_loops iterations with ACT early exit.
@@ -1074,7 +1085,7 @@ class OpenMythos(nn.Module):
         self,
         input_ids: torch.Tensor,
         n_loops: Optional[int] = None,
-        kv_cache: Optional[dict] = None,
+        kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         start_pos: int = 0,
     ) -> torch.Tensor:
         """
@@ -1144,7 +1155,10 @@ class OpenMythos(nn.Module):
         Returns:
             Token indices of shape (B, T + max_new_tokens)
         """
-        kv_cache: dict = {}
+        # P3.3: StaticKVCache pre-allocates (B, max_seq_len, ...) buffers per
+        # layer so decode steps only write the new-token slice — no torch.cat
+        # reallocation across the generation loop.
+        kv_cache: StaticKVCache = StaticKVCache(max_seq_len=self.cfg.max_seq_len)
         prompt_len = input_ids.shape[1]
         for step in range(max_new_tokens):
             if step == 0:
