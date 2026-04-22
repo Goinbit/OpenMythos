@@ -1,7 +1,7 @@
 """Tests for the Mixture-of-Depths Attention (MoDA) model.
 
 Covers configuration, forward pass, loss computation, gradient flow, and
-determinism for the independent ``open_mythos.moda`` model.  These tests use
+determinism for the independent ``open_mythos.experimental.moda`` model.  These tests use
 tiny dimensions so they run quickly on CPU.
 """
 
@@ -12,7 +12,7 @@ import math
 import pytest
 import torch
 
-from open_mythos.moda import (
+from open_mythos.experimental.moda import (
     DeepSeekGate,
     MoDAConfig,
     MoDAModel,

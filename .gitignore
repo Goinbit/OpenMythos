@@ -34,6 +34,8 @@ experimental
 ffn_alternatives
 artifacts_five
 experimental/
+!open_mythos/experimental/
+!open_mythos/experimental/**
 encryption
 errors
 chroma
