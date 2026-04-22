@@ -44,6 +44,10 @@ class GQAttention(nn.Module):
         self.wo = nn.Linear(cfg.n_heads * self.head_dim, cfg.dim, bias=False)
         self.attn_drop = nn.Dropout(cfg.dropout)
 
+        # Stage 4.3 (P4.3): expose rope-dim for single-buffer precomputation.
+        # GQA rotates the full per-head dim.
+        self.freqs_cis_dim = (cfg.dim // cfg.attention.n_heads) // 2
+
     def forward(
         self,
         x: torch.Tensor,

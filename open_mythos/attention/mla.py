@@ -81,6 +81,9 @@ class MLAttention(nn.Module):
         self.wo = nn.Linear(cfg.n_heads * cfg.v_head_dim, cfg.dim, bias=False)
         self.attn_drop = nn.Dropout(cfg.dropout)
 
+        # Stage 4.3 (P4.3): MLA applies RoPE only on qk_rope_head_dim channels.
+        self.freqs_cis_dim = cfg.attention.qk_rope_head_dim // 2
+
     def forward(
         self,
         x: torch.Tensor,
