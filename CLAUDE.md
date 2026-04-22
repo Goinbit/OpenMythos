@@ -277,6 +277,42 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · P3.3 合并 + 收尾小优化(loop_dim / moda 清理 / moda MoE 向量化)
+
+**分支:** `main` · **commits:** 5 个,规划中 commit
+**Agents:** 无
+**完成 IDs:** P3.3(合并)、历史遗留清单 #1(loop_index_embedding 奇数断言)、基础设施 torch 版本修正、moda.py 死代码清理、DeepSeekMoE 向量化
+
+### ✅ 完成
+- **P3.3 合并** — `rebase p3.3-static-kv-cache onto main` → `ff-merge` → 线性历史,删临时分支。main 当前 HEAD `e314ff9`
+- **`pyproject.toml:41`** `torch = "2.11.0"` → `torch = ">=2.1,<3.0"`(2.11 版本不存在,之前的错号)
+- **`training/requirements.txt:1`** `torch>=2.11.0` → `torch>=2.1,<3.0`
+- **`main.py:620-625`** `loop_index_embedding` 入口 `ValueError` 防止奇数 loop_dim(历史 silent-failure #1 修复)
+- **`main.py:895-902`** `RecurrentBlock.__init__` `cfg.dim // 8` 奇数时构造期失败(错误消息指出 `cfg.dim` 必须是 16 的倍数)
+- **`test_main.py:TestLoopIndexEmbedding`** +2 tests: `test_odd_loop_dim_raises` / `test_recurrent_block_rejects_dim_not_multiple_of_16`
+- **`moda.py:1066-1134`** 删除 69 行 `if __name__ == "__main__":` 注释残留(python-reviewer LOW finding 已处理)
+- **`moda.py:556-569`** `DeepSeekMoE.forward` 分派:`counts[i].item()`(per-expert CUDA sync)→ 一次 `.tolist()`(O(1) sync)+ `index_add_` scatter 替换 masked `+=`;同 P3.2 思路
+
+### 📊 测试变化
+- before: 164 passed / 4 skipped(上次会话末)
+- after: **166 passed / 4 skipped**(+2)
+- 新增:TestLoopIndexEmbedding 2 个 assertion 测试
+
+### 🔑 关键决策 / 发现
+- **rebase + ff-merge 保持线性历史** — 未用 merge commit,P3.3 已扁平到 main
+- **loop_dim 约束转嫁给 `cfg.dim % 16 == 0`** — 没直接加到 `MythosConfig.__post_init__`,因为 loop_dim 是 `RecurrentBlock` 的内部实现细节;在那里本地化更符合封装原则
+- **moda.py MoE 向量化未改变外部行为** — 只优化 dispatch loop,数值等价(同 P3.2);`_balance_loss` 不变(已是向量化的 scatter_add_)
+- **moda.py 注释残留删除 = 69 行死代码** — 文件仍 1067 行(未减 67 是因为算上还有前后换行);该 smoke test 已由 `tests/test_moda.py` 正式测试替代
+
+### 🧭 留到下阶段
+- **Stage 4.1 — 拆分 main.py**(monolith → config/ + attention/ + moe/ + recurrence/ + blocks/ + model/ + generate/)。最大结构改进,本地可验证,纯 refactor 无行为变化。推荐作为下一大块工作
+- **Stage 4.2 — moda.py 提取共享 RMSNorm/Expert 到 primitives/**,DeepSeekMoE(含 balance loss)反向迁移到 main 的 MoEFFN
+- **GitHub Actions CI** — 把本地 164+2=166 测试变成 PR 阻塞闸(基础设施空白填补)
+- **`weight init magic number 0.02`** 提取 `_INIT_STD` 模块常量(python-reviewer LOW,本次未做)
+- **LTI clamp 边界 training 监控**(silent-failure #2,本次未做)
+
+---
+
 ## 2026-04-23 · Stop hook 强制 CLAUDE.md 日志维护
 
 **分支:** `main` · **commits:** `68e9f7e` `a643917`
