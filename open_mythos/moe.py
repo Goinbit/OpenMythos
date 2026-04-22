@@ -1,3 +1,5 @@
+from typing import Tuple, Union
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,16 +29,21 @@ class MoEFFN(nn.Module):
     keeping compute sparse while the total parameter count stays large.
     """
 
-    def __init__(self, cfg: MythosConfig):
+    def __init__(self, cfg: MythosConfig, moe_balance_alpha: float = 0.0):
         """
         Args:
-            cfg -- MythosConfig; uses n_experts, n_shared_experts, n_experts_per_tok,
-                   dim, expert_dim
+            cfg                -- MythosConfig; uses n_experts, n_shared_experts,
+                                  n_experts_per_tok, dim, expert_dim.
+            moe_balance_alpha  -- Coefficient for the expert-level balance loss
+                                  (DeepSeekMoE §3.3).  Only applied when the
+                                  caller opts in via ``return_balance_loss=True``
+                                  in ``forward``.
         """
         super().__init__()
         self.n_experts = cfg.n_experts
         self.n_shared = cfg.n_shared_experts
         self.topk = cfg.n_experts_per_tok
+        self.moe_balance_alpha = moe_balance_alpha
 
         self.router = nn.Linear(cfg.dim, cfg.n_experts, bias=False)
         # load-balancing bias adjusted externally during training; not a gradient param
@@ -52,13 +59,24 @@ class MoEFFN(nn.Module):
             ]
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_balance_loss: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Args:
-            x -- input of shape (B, T, dim)
+            x                   -- input of shape (B, T, dim)
+            return_balance_loss -- when True, also return the DeepSeekMoE §3.3
+                                   expert-level balance loss scaled by
+                                   ``self.moe_balance_alpha``.  Default ``False``
+                                   preserves the original single-tensor return
+                                   for all existing callers.
+
         Returns:
-            Tensor of shape (B, T, dim); shared expert outputs are summed on top
-            of the weighted routed expert outputs
+            If ``return_balance_loss`` is False (default): the (B, T, dim) output
+            tensor only. Otherwise: a ``(output, balance_loss)`` tuple where
+            ``balance_loss`` is a zero-dim scalar tensor.
         """
         B, T, D = x.shape
         flat = x.view(B * T, D)
@@ -105,4 +123,47 @@ class MoEFFN(nn.Module):
         for shared in self.shared_experts:
             out = out + shared(flat)
 
-        return out.view(B, T, D)
+        out = out.view(B, T, D)
+
+        if not return_balance_loss:
+            return out
+
+        balance_loss = self._balance_loss(topk_idx, scores, N)
+        return out, balance_loss
+
+    def _balance_loss(
+        self,
+        topk_idx: torch.Tensor,
+        scores: torch.Tensor,
+        n_tokens: int,
+    ) -> torch.Tensor:
+        """Expert-level balance loss from DeepSeekMoE §3.3.
+
+        Penalises routing imbalance so the model spreads tokens evenly across
+        experts.  Only the soft-score term ``P_i`` carries a gradient; the hard
+        count term ``f_i`` is non-differentiable and weights ``P_i``.
+
+        ::
+
+            f_i = (N_r / (K × T)) × #{tokens routed to expert i}
+            P_i = (1/T) Σ_t scores[t, i]
+            L   = alpha × Σ_i  f_i · P_i
+
+        Args:
+            topk_idx: ``(T, K)`` int64 — expert ids selected per token (where
+                      ``T = B*T`` is the flattened token count).
+            scores:   ``(T, N_r)`` float — full softmax distribution over
+                      experts (pre top-K), used for ``P_i``.
+            n_tokens: Total flattened token count ``B*T``.
+
+        Returns:
+            Zero-dim scalar tensor on the same device/dtype as ``scores``.
+        """
+        Nr = self.n_experts
+        K = self.topk
+
+        counts = torch.bincount(topk_idx.reshape(-1), minlength=Nr).to(scores.dtype)
+        f = counts * (Nr / (K * n_tokens))  # [Nr] — non-differentiable
+        P = scores.mean(dim=0)              # [Nr] — gradient flows here
+
+        return self.moe_balance_alpha * (f * P).sum()

@@ -1683,5 +1683,46 @@ class TestStaticKVCacheIntegration:
             m(extra, n_loops=2, kv_cache=cache, start_pos=cfg.max_seq_len)
 
 
+# ---------------------------------------------------------------------------
+# P4.2: MoEFFN opt-in balance loss
+# ---------------------------------------------------------------------------
+
+
+class TestMoEBalanceLoss:
+    """Stage 4.2: MoEFFN.forward gained an opt-in return_balance_loss path
+    that mirrors the DeepSeekMoE aux-loss behavior from experimental/moda.py,
+    without breaking the default single-tensor return for current callers."""
+
+    def setup_method(self):
+        torch.manual_seed(42)
+        self.cfg = gqa_cfg(
+            dim=64, n_experts=4, n_experts_per_tok=2,
+            n_shared_experts=1, expert_dim=16,
+        )
+        self.moe = MoEFFN(self.cfg)
+
+    def test_default_returns_tensor_only(self):
+        """Without explicit opt-in, MoEFFN.forward returns a single tensor
+        (backward compat with all pre-P4.2 callers)."""
+        x = torch.randn(2, 8, self.cfg.dim)
+        out = self.moe(x)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == x.shape
+
+    def test_opt_in_balance_loss_is_scalar_positive(self):
+        """return_balance_loss=True yields (output, scalar balance loss)."""
+        self.moe.train()
+        # Give the aux loss a nonzero alpha so the returned scalar isn't 0.0.
+        self.moe.moe_balance_alpha = 0.01
+        x = torch.randn(2, 8, self.cfg.dim)
+        out, balance_loss = self.moe(x, return_balance_loss=True)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == x.shape
+        assert isinstance(balance_loss, torch.Tensor)
+        assert balance_loss.dim() == 0  # scalar
+        assert torch.isfinite(balance_loss)
+        assert balance_loss.item() > 0.0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])
