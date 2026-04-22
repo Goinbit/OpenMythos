@@ -54,15 +54,19 @@ class OpenMythos(nn.Module):
 
         self.embed = nn.Embedding(cfg.vocab_size, cfg.dim)
 
-        # GQA uses full head_dim for RoPE; MLA uses only qk_rope_head_dim (decoupled)
-        freqs = precompute_rope_freqs(
-            cfg.dim // cfg.n_heads, cfg.max_seq_len, cfg.rope_theta
+        # Stage 4.3 (P4.3): single freqs_cis buffer sized to the chosen attention's
+        # rope dim. Pre-4.3 registered both freqs_cis (GQA) and freqs_cis_mla (MLA)
+        # and selected between them in forward; only one was ever read so the other
+        # was dead memory. Numerically identical to the old path since the selected
+        # dim is unchanged.
+        if cfg.attention.attn_type == "mla":
+            rope_dim = cfg.attention.qk_rope_head_dim
+        else:  # gqa
+            rope_dim = cfg.dim // cfg.attention.n_heads
+        self.register_buffer(
+            "freqs_cis",
+            precompute_rope_freqs(rope_dim, cfg.max_seq_len, cfg.rope_theta),
         )
-        self.register_buffer("freqs_cis", freqs)
-        freqs_mla = precompute_rope_freqs(
-            cfg.qk_rope_head_dim, cfg.max_seq_len, cfg.rope_theta
-        )
-        self.register_buffer("freqs_cis_mla", freqs_mla)
 
         self.prelude = nn.ModuleList(
             [TransformerBlock(cfg, use_moe=False) for _ in range(cfg.prelude_layers)]
@@ -129,9 +133,8 @@ class OpenMythos(nn.Module):
         device = input_ids.device
 
         x = self.embed(input_ids)
-        freqs_cis = (
-            self.freqs_cis_mla if self.cfg.attn_type == "mla" else self.freqs_cis
-        )[start_pos : start_pos + T]
+        # Stage 4.3 (P4.3): single buffer precomputed at init; no attn_type branch.
+        freqs_cis = self.freqs_cis[start_pos : start_pos + T]
         mask = self._causal_mask(T, device) if T > 1 else None
 
         for i, layer in enumerate(self.prelude):

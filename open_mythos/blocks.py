@@ -3,8 +3,7 @@ from typing import Optional, Union
 import torch
 import torch.nn as nn
 
-from open_mythos.attention.gqa import GQAttention
-from open_mythos.attention.mla import MLAttention
+from open_mythos.attention.factory import build_attention
 from open_mythos.config import MythosConfig
 from open_mythos.kv_cache import StaticKVCache
 from open_mythos.moe import MoEFFN
@@ -39,7 +38,8 @@ class TransformerBlock(nn.Module):
         super().__init__()
         self.attn_norm = RMSNorm(cfg.dim)
         self.ffn_norm = RMSNorm(cfg.dim)
-        self.attn = MLAttention(cfg) if cfg.attn_type == "mla" else GQAttention(cfg)
+        # Stage 4.3 (P4.3): factory replaces hardcoded `if cfg.attn_type == "mla"`.
+        self.attn = build_attention(cfg)
         self.ffn = MoEFFN(cfg) if use_moe else Expert(cfg.dim, cfg.dim * 4 // 3)
         self.resid_drop = nn.Dropout(cfg.dropout)
 

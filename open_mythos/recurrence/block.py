@@ -8,8 +8,8 @@ from open_mythos.config import MythosConfig
 from open_mythos.kv_cache import StaticKVCache
 from open_mythos.primitives.norm import RMSNorm
 from open_mythos.recurrence.act import ACTHalting
+from open_mythos.recurrence.factory import build_injection
 from open_mythos.recurrence.lora import LoRAAdapter
-from open_mythos.recurrence.lti import LTIInjection
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,8 @@ class RecurrentBlock(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.block = TransformerBlock(cfg, use_moe=True)
-        self.injection = LTIInjection(cfg.dim)
+        # Stage 4.3 (P4.3): factory replaces hardcoded LTIInjection instantiation.
+        self.injection = build_injection(cfg)
         self.act = ACTHalting(cfg.dim)
         self.lora = LoRAAdapter(cfg.dim, cfg.lora_rank, cfg.max_loop_iters)
         self.norm = RMSNorm(cfg.dim)
