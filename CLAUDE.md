@@ -277,6 +277,34 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · Stop hook 强制 CLAUDE.md 日志维护
+
+**分支:** `main` · **commits:** `68e9f7e` `a643917`
+**Agents:** 无
+**完成 IDs:** 无 - 工程基础设施
+
+### ✅ 完成
+- `CLAUDE.md` 执行日志章节(+262 行) - 维护规则 + 条目格式 + 触发时机 + 7 条历史追溯条目
+- `.claude/hooks/check_claude_md_updated.sh`(89 行 bash)- Stop hook,exit 2 阻止 session 结束如果源码/测试变更但 CLAUDE.md 未追加
+- `.claude/settings.json` - 将 hook 接入 Claude Code harness 的 `Stop` 事件
+- `.gitignore:14` - 从 `.claude/` 改为 `.claude/*` + 反向 include `.claude/settings.json` 和 `.claude/hooks/`,保持 `settings.local.json` 继续 ignore
+
+### 📊 测试变化
+- 无代码测试变化(纯 ops/docs 层改动,无 `open_mythos/` 或 `tests/` 修改)
+- Hook 自检:4 场景(clean / code-only / both / docs-only)全部正确
+
+### 🔑 关键决策 / 发现
+- **Hook meaningful 文件白名单** - 只对 `open_mythos/`、`training/`、`tests/`、`test_main.py`、`pyproject.toml`、`requirements*.txt` 触发;纯 docs 改动(CLAUDE.md 自己、其他 *.md)不触发自锁
+- **settings.json checked in / settings.local.json ignored** - shared team 配置进 git,per-user permissions 覆盖留本地
+- **hook 跨分支** - 放 `main` 上,P3.3 branch checkout 后失效(因为 `.claude/hooks/` 不在 p3.3 commit 里)—— 这是 design choice:只在 main 强制,feature branch 开发自由
+
+### 🧭 留到下阶段
+- 考虑把 hook 也加到 `PostToolUse` 事件,在 Edit/Write 刚改完就检查,更早提示
+- P3.3 merge 到 main 后 hook 自动生效
+- 把 hook 规则 porting 到 user-level `~/.claude/settings.json` 或 rules/common/hooks.md(跨项目复用)
+
+---
+
 ## 2026-04-23 · 剩余工作盘点与本地能力评估
 
 **分支:** `p3.3-static-kv-cache` · **commits:** —(无代码变更)
