@@ -616,6 +616,14 @@ def loop_index_embedding(
     Returns:
         h with a sinusoidal bias added to its first loop_dim channels; same shape
     """
+    # loop_dim must be even: the embedding concatenates sin + cos halves, and an
+    # odd loop_dim would truncate mid-cosine producing an asymmetric (sin-heavy)
+    # encoding that is neither standard sinusoidal nor RoPE.
+    if loop_dim % 2 != 0:
+        raise ValueError(
+            f"loop_dim must be even, got {loop_dim} "
+            "(sin/cos halves would split asymmetrically)"
+        )
     freqs = 1.0 / (
         theta
         ** (torch.arange(0, loop_dim, 2, device=h.device, dtype=h.dtype) / loop_dim)
@@ -894,6 +902,14 @@ class RecurrentBlock(nn.Module):
         self.loop_dim = (
             cfg.dim // 8
         )  # fraction of channels receiving loop-index embedding
+        # Enforce even loop_dim so the sin/cos split in loop_idx_table below is
+        # balanced (see loop_index_embedding for rationale). cfg.dim % 16 == 0
+        # is the precise invariant but we localize the check here.
+        if self.loop_dim % 2 != 0:
+            raise ValueError(
+                f"RecurrentBlock: loop_dim = cfg.dim // 8 = {self.loop_dim} must "
+                f"be even. Set cfg.dim to a multiple of 16 (got cfg.dim={cfg.dim})."
+            )
 
         # P3.7: precompute loop-index sinusoid table once, indexed per iteration.
         # Mirrors loop_index_embedding's math exactly; buffer shape (max_loops, dim)
