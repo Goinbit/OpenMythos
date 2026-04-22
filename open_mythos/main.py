@@ -1,12 +1,13 @@
+import warnings
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-@dataclass
+@dataclass(frozen=True)
 class MythosConfig:
     """
     Hyperparameter configuration for OpenMythos.
@@ -50,7 +51,7 @@ class MythosConfig:
     prelude_layers: int = 2
     coda_layers: int = 2
     # Attention type: "gqa" | "mla"
-    attn_type: str = "mla"
+    attn_type: Literal["gqa", "mla"] = "mla"
     # MLA params (only used when attn_type="mla")
     kv_lora_rank: int = 512  # compressed KV latent cached instead of full K/V
     q_lora_rank: int = 1536  # compressed Q latent dim
@@ -72,6 +73,33 @@ class MythosConfig:
     max_output_tokens: int = 4096
     # Dropout (set 0.0 to disable; 0.1 is standard for pretraining)
     dropout: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.attn_type not in ("gqa", "mla"):
+            raise ValueError(
+                f"attn_type must be 'gqa' or 'mla', got {self.attn_type!r}"
+            )
+        if self.dim % self.n_heads != 0:
+            raise ValueError(
+                f"dim ({self.dim}) must be divisible by n_heads ({self.n_heads})"
+            )
+        # n_kv_heads only applies to GQA; MLA ignores it.
+        if self.attn_type == "gqa" and self.n_heads % self.n_kv_heads != 0:
+            raise ValueError(
+                f"n_heads ({self.n_heads}) must be divisible by n_kv_heads ({self.n_kv_heads})"
+            )
+        if self.n_experts_per_tok > self.n_experts:
+            raise ValueError(
+                f"n_experts_per_tok ({self.n_experts_per_tok}) must be <= n_experts ({self.n_experts})"
+            )
+        if not (0.0 < self.act_threshold <= 1.0):
+            raise ValueError(
+                f"act_threshold ({self.act_threshold}) must be in (0.0, 1.0]"
+            )
+        if self.lora_rank <= 0 or self.lora_rank > self.dim:
+            raise ValueError(
+                f"lora_rank ({self.lora_rank}) must be > 0 and <= dim ({self.dim})"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -154,12 +182,16 @@ def apply_rope(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
     Returns:
         Rotated tensor of the same shape and dtype as x
     """
-    xc = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
-    return (
-        torch.view_as_real(xc * freqs_cis.unsqueeze(0).unsqueeze(2))
-        .flatten(-2)
-        .to(x.dtype)
-    )
+    # P3.4: preserve input dtype. torch.view_as_complex requires float32 or
+    # float64, so only upcast when the input is a lower-precision dtype (bf16/
+    # fp16). Float inputs skip the cast entirely.
+    orig_dtype = x.dtype
+    if x.dtype in (torch.float32, torch.float64):
+        xc = torch.view_as_complex(x.reshape(*x.shape[:-1], -1, 2))
+    else:
+        xc = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+    out = torch.view_as_real(xc * freqs_cis.unsqueeze(0).unsqueeze(2)).flatten(-2)
+    return out.to(orig_dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -224,26 +256,47 @@ class GQAttention(nn.Module):
         q = apply_rope(q, freqs_cis)
         k = apply_rope(k, freqs_cis)
 
+        # TODO P3.3 deferred: static pre-allocated KV cache. Requires threading
+        # start_pos and max_seq_len through every TransformerBlock call and
+        # every recurrent cache_key; the refactor is invasive and numerically
+        # sensitive, so left as a follow-up to avoid breaking P3.1/P3.2.
         if kv_cache is not None:
             if cache_key in kv_cache:
                 k = torch.cat([kv_cache[cache_key]["k"], k], dim=1)
                 v = torch.cat([kv_cache[cache_key]["v"], v], dim=1)
             kv_cache[cache_key] = {"k": k.detach(), "v": v.detach()}
 
-        # expand KV to match Q heads
-        k = k.repeat_interleave(self.groups, dim=2)
-        v = v.repeat_interleave(self.groups, dim=2)
+        # P3.1: use fused scaled-dot-product attention (SDPA / FlashAttention).
+        # SDPA expects (B, H, T, D). We still carry GQA's fewer KV heads; SDPA's
+        # enable_gqa kwarg (PyTorch >= 2.5) handles the head broadcast internally.
+        q = q.transpose(1, 2)  # (B, Hq, T, head_dim)
+        k = k.transpose(1, 2)  # (B, Hkv, S, head_dim)
+        v = v.transpose(1, 2)  # (B, Hkv, S, head_dim)
 
-        q = q.transpose(1, 2)  # (B, H, T, head_dim)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
+        # Causal mask only applies during prefill (T_q == T_kv). During decode
+        # with a cached KV the new query (T_q=1) attends over everything, so
+        # no mask is required.
+        is_causal = (mask is not None) and (q.shape[-2] == k.shape[-2]) and (q.shape[-2] > 1)
+        dropout_p = self.attn_drop.p if self.training else 0.0
 
-        scale = self.head_dim**-0.5
-        attn = torch.matmul(q, k.transpose(-2, -1)) * scale
-        if mask is not None:
-            attn = attn + mask
-        attn = self.attn_drop(F.softmax(attn, dim=-1))
-        out = torch.matmul(attn, v)
+        try:
+            out = F.scaled_dot_product_attention(
+                q, k, v,
+                is_causal=is_causal,
+                dropout_p=dropout_p,
+                enable_gqa=(q.shape[-3] != k.shape[-3]),
+            )
+        except TypeError:
+            # PyTorch < 2.5: no enable_gqa kwarg. Manually expand KV heads.
+            if q.shape[-3] != k.shape[-3]:
+                k = k.repeat_interleave(self.groups, dim=1)
+                v = v.repeat_interleave(self.groups, dim=1)
+            out = F.scaled_dot_product_attention(
+                q, k, v,
+                is_causal=is_causal,
+                dropout_p=dropout_p,
+            )
+
         out = out.transpose(1, 2).contiguous().view(B, T, -1)
         return self.wo(out)
 
@@ -375,17 +428,21 @@ class MLAttention(nn.Module):
         v = kv[..., self.qk_nope_dim :]  # (B, S, H, v_dim)
         k = torch.cat([k_nope, k_rope], dim=-1)  # (B, S, H, nope+rope)
 
-        # attention
+        # attention — P3.1: fused SDPA. MLA uses the same number of Q and K
+        # heads (n_heads) with differing K-dim (nope+rope) and V-dim (v_head_dim);
+        # SDPA supports K/V dim asymmetry so no repeat is needed.
         q = q.transpose(1, 2)  # (B, H, T, q_head_dim)
         k = k.transpose(1, 2)  # (B, H, S, q_head_dim)
         v = v.transpose(1, 2)  # (B, H, S, v_dim)
 
-        scale = self.q_head_dim**-0.5
-        attn = torch.matmul(q, k.transpose(-2, -1)) * scale
-        if mask is not None:
-            attn = attn + mask
-        attn = self.attn_drop(F.softmax(attn, dim=-1))
-        out = torch.matmul(attn, v)  # (B, H, T, v_dim)
+        is_causal = (mask is not None) and (q.shape[-2] == k.shape[-2]) and (q.shape[-2] > 1)
+        dropout_p = self.attn_drop.p if self.training else 0.0
+
+        out = F.scaled_dot_product_attention(
+            q, k, v,
+            is_causal=is_causal,
+            dropout_p=dropout_p,
+        )
         out = out.transpose(1, 2).contiguous().view(B, T, -1)
         return self.wo(out)
 
@@ -485,18 +542,35 @@ class MoEFFN(nn.Module):
         scores = F.softmax(logits, dim=-1)
         _, topk_idx = (logits + self.router_bias).topk(self.topk, dim=-1)
         topk_scores = scores.gather(-1, topk_idx)
-        topk_scores = topk_scores / topk_scores.sum(dim=-1, keepdim=True)  # renorm
+        topk_scores = topk_scores / topk_scores.sum(dim=-1, keepdim=True).clamp(min=1e-9)  # renorm
 
-        # routed expert dispatch (token-level scatter)
+        # P3.2: vectorized routed-expert dispatch.
+        # Flatten the (token, k_slot) pairs so every top-K assignment is one
+        # entry in three parallel tensors. One expert at a time, we gather all
+        # of its tokens in a single matmul instead of iterating per k-slot.
+        N = flat.shape[0]
+        K = self.topk
+        flat_idx = topk_idx.reshape(-1)          # (N*K,)  expert id per assignment
+        flat_weights = topk_scores.reshape(-1)   # (N*K,)  router weight per assignment
+        flat_tokens = (
+            torch.arange(N, device=flat.device)
+            .unsqueeze(1)
+            .expand(-1, K)
+            .reshape(-1)
+        )  # (N*K,)  token index per assignment
+
         out = torch.zeros_like(flat)
-        for i in range(self.topk):
-            expert_ids = topk_idx[:, i]
-            token_scores = topk_scores[:, i].unsqueeze(-1)
-            for eid in range(self.n_experts):
-                mask = expert_ids == eid
-                if not mask.any():
-                    continue
-                out[mask] += token_scores[mask] * self.routed_experts[eid](flat[mask])
+        # One sync to read bincount into Python — amortized across all experts,
+        # far cheaper than per-expert .any() checks inside the inner loop.
+        counts = torch.bincount(flat_idx, minlength=self.n_experts).tolist()
+        for eid in range(self.n_experts):
+            if counts[eid] == 0:
+                continue
+            mask = flat_idx == eid
+            token_selector = flat_tokens[mask]          # (M,)
+            weights = flat_weights[mask].unsqueeze(-1)  # (M, 1)
+            expert_out = self.routed_experts[eid](flat[token_selector])  # (M, D)
+            out.index_add_(0, token_selector, expert_out * weights)
 
         # shared experts always fire for every token
         for shared in self.shared_experts:
@@ -571,6 +645,8 @@ class LoRAAdapter(nn.Module):
         self.down = nn.Linear(dim, rank, bias=False)  # shared A: dim → rank
         self.B = nn.Parameter(torch.randn(rank, dim) * 0.02)  # shared B: rank → dim
         self.scale = nn.Embedding(max_loops, rank)  # per-loop element-wise scale
+        # One-shot warning flag for depth extrapolation beyond trained max_loops.
+        self._warned_extrapolation = False
 
     def forward(self, x: torch.Tensor, loop_t: int) -> torch.Tensor:
         """
@@ -585,8 +661,22 @@ class LoRAAdapter(nn.Module):
         # training max_loop_iters. Iterations beyond the trained range reuse
         # the last learned per-loop scale rather than indexing out of range.
         max_t = self.scale.num_embeddings - 1
-        t_idx = loop_t if loop_t <= max_t else max_t
-        s = self.scale(torch.tensor(t_idx, device=x.device))  # (rank,)
+        if loop_t > max_t:
+            if not self._warned_extrapolation:
+                warnings.warn(
+                    f"LoRAAdapter: loop_t={loop_t} exceeds max_loops={self.scale.num_embeddings}; "
+                    f"reusing final scale for all extrapolated iterations. Model quality may degrade.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                self._warned_extrapolation = True
+            t_idx = max_t
+        else:
+            t_idx = loop_t
+        # P3.6: index the embedding weight directly with a Python int to avoid
+        # constructing a scalar tensor every call (faster and torch.compile
+        # friendly). self.scale.weight has shape (max_loops, rank).
+        s = self.scale.weight[t_idx]  # (rank,)
         down = self.down(x) * s  # (B, T, rank)
         return down @ self.B  # (B, T, dim)
 
@@ -794,6 +884,23 @@ class RecurrentBlock(nn.Module):
             cfg.dim // 8
         )  # fraction of channels receiving loop-index embedding
 
+        # P3.7: precompute loop-index sinusoid table once, indexed per iteration.
+        # Mirrors loop_index_embedding's math exactly; buffer shape (max_loops, dim)
+        # so the forward path can do a single add instead of allocating fresh
+        # freqs/sin/cos tensors on every loop iteration.
+        loop_theta = 10000.0
+        freqs = 1.0 / (
+            loop_theta
+            ** (torch.arange(0, self.loop_dim, 2, dtype=torch.float32) / self.loop_dim)
+        )
+        t_range = torch.arange(cfg.max_loop_iters, dtype=torch.float32).unsqueeze(-1)
+        angles = t_range * freqs  # (max_loops, loop_dim//2)
+        emb = torch.cat([angles.sin(), angles.cos()], dim=-1)[:, : self.loop_dim]
+        # Pad with zeros to full dim so a simple `h + table[t]` suffices.
+        table = torch.zeros(cfg.max_loop_iters, cfg.dim)
+        table[:, : self.loop_dim] = emb
+        self.register_buffer("loop_idx_table", table)
+
     def forward(
         self,
         h: torch.Tensor,
@@ -827,12 +934,21 @@ class RecurrentBlock(nn.Module):
         h_out = torch.zeros_like(h)
 
         for t in range(n_loops):
-            h_loop = loop_index_embedding(h, t, self.loop_dim)
+            # P3.7: use precomputed loop-index table. If depth extrapolates past
+            # the trained max_loops, clamp to the last row (same spirit as LoRA).
+            t_idx = min(t, self.loop_idx_table.shape[0] - 1)
+            h_loop = h + self.loop_idx_table[t_idx].to(dtype=h.dtype).view(1, 1, -1)
             combined = self.norm(h_loop + e)
             cache_key = f"recurrent_loop_{t}"
             trans_out = self.block(combined, freqs_cis, mask, kv_cache, cache_key)
             trans_out = trans_out + self.lora(trans_out, t)
-            h = self.injection(h, e, trans_out)
+            h_new = self.injection(h, e, trans_out)
+            # Gate the hidden-state update: halted positions keep h unchanged so
+            # their state is frozen at the iteration they halted on. Running
+            # positions take the fresh LTI update. This also prevents halted
+            # positions from writing new entries at later cache keys.
+            still_running_mask = (~halted).unsqueeze(-1).float()
+            h = h_new * still_running_mask + h * (1.0 - still_running_mask)
 
             p = self.act(h)  # (B, T)
             still_running = ~halted
@@ -854,11 +970,13 @@ class RecurrentBlock(nn.Module):
             cumulative_p = cumulative_p + p * still_running.float()
             halted = halted | (cumulative_p >= self.cfg.act_threshold)
 
-            # Only short-circuit when there is no KV cache to keep consistent.
-            # With a cache, every loop depth must run on every forward pass so
-            # later decode steps find populated keys at every cache_key.
-            if halted.all() and kv_cache is None:
-                break
+            # P3.5: early-exit removed. The previous `halted.all()` check forced
+            # a CPU<->GPU sync every iteration and blocked torch.compile.
+            # Halted positions are already gated out of h and h_out updates
+            # above, so extra iterations cost only the transformer call for
+            # already-halted tokens — an acceptable trade for sync-free loops.
+            # Inference (kv_cache != None) had the short-circuit disabled
+            # already, so removing it does not change decode behavior.
 
         return h_out
 
@@ -1035,6 +1153,9 @@ class OpenMythos(nn.Module):
             else:
                 cur_ids = input_ids[:, -1:]
                 start_pos = prompt_len + step - 1
+            # Stop if the next forward would exceed RoPE precomputation range.
+            if start_pos + cur_ids.shape[1] > self.cfg.max_seq_len:
+                break
             logits = self.forward(
                 cur_ids, n_loops=n_loops, kv_cache=kv_cache, start_pos=start_pos
             )

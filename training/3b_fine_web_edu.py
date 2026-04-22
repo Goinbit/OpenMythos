@@ -11,7 +11,11 @@ Multi-GPU:
 
 import os
 import math
+import random
 import time
+from collections import deque
+from dataclasses import replace
+
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -33,6 +37,18 @@ from open_mythos import OpenMythos
 from open_mythos.main import TransformerBlock, RecurrentBlock
 from open_mythos.variants import mythos_3b
 from open_mythos.tokenizer import MythosTokenizer
+
+
+# ---------------------------------------------------------------------------
+# Training-loop-only flags
+# ---------------------------------------------------------------------------
+# MythosConfig is frozen, so training-specific toggles live here as module-level
+# constants. Flip USE_GRAD_CHECKPOINT=True to wrap RecurrentBlock forwards with
+# torch.utils.checkpoint.checkpoint(..., use_reentrant=False) for memory savings
+# at the cost of a recompute pass. Actual wiring at the forward call site is
+# deferred (see TODO below) because FSDP + activation-checkpoint interaction
+# needs validation before it's turned on by default.
+USE_GRAD_CHECKPOINT: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -96,16 +112,36 @@ class FineWebEduDataset(IterableDataset):
             streaming=True,
         ).shard(num_shards=total_shards, index=shard_index)
 
-        buf = []
+        # deque gives O(1) popleft per token vs. O(n) for list-slice reassignment
+        buf: deque[int] = deque()
+        chunk_len = self.seq_len + 1
         for sample in ds:
             buf.extend(self.encoding.encode(sample["text"]))
-            while len(buf) >= self.seq_len + 1:
-                chunk = buf[: self.seq_len + 1]
-                buf = buf[self.seq_len + 1 :]
+            while len(buf) >= chunk_len:
+                chunk = [buf.popleft() for _ in range(chunk_len)]
                 yield (
                     torch.tensor(chunk[:-1], dtype=torch.long),
                     torch.tensor(chunk[1:], dtype=torch.long),
                 )
+
+
+# ---------------------------------------------------------------------------
+# Reproducibility
+# ---------------------------------------------------------------------------
+
+
+def _seed_worker(worker_id: int) -> None:
+    """
+    Seed every DataLoader worker deterministically from the run's base seed.
+
+    Each worker derives its own stream from `base_seed + worker_id`, giving
+    reproducible shuffling across runs while keeping workers decorrelated
+    from each other.
+    """
+    base_seed = torch.initial_seed() % (2**32)
+    worker_seed = (base_seed + worker_id) % (2**32)
+    random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +182,36 @@ def get_lr(step: int, warmup: int, total: int, max_lr: float, min_lr: float) -> 
         return min_lr
     decay = (step - warmup) / (total - warmup)
     return min_lr + 0.5 * (max_lr - min_lr) * (1.0 + math.cos(math.pi * decay))
+
+
+# ---------------------------------------------------------------------------
+# Config compatibility helpers
+# ---------------------------------------------------------------------------
+
+
+def _validate_vocab_compatibility(encoding, cfg) -> None:
+    """
+    Guard against tokenizer/model-config vocab_size drift.
+
+    Belt-and-suspenders check: the training entry point reconstructs `cfg` via
+    `dataclasses.replace` with the tokenizer's vocab size, so in the common
+    path these two values are equal by construction. This helper defends
+    against future refactors where the two could diverge (e.g. cfg built
+    from a checkpoint, tokenizer swapped out mid-run).
+
+    Args:
+        encoding -- tokenizer exposing `.vocab_size`
+        cfg      -- model config exposing `.vocab_size`
+
+    Raises:
+        ValueError if the two vocab sizes disagree; the message contains both
+        values so a mismatch is obvious in logs.
+    """
+    if encoding.vocab_size != cfg.vocab_size:
+        raise ValueError(
+            f"Tokenizer vocab_size ({encoding.vocab_size}) does not match "
+            f"model cfg.vocab_size ({cfg.vocab_size})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +298,12 @@ def save_checkpoint(
     if not master:
         return
 
+    for name, tensor in model_state.items():
+        if not torch.isfinite(tensor).all():
+            raise RuntimeError(
+                f"Non-finite parameter {name!r} at checkpoint save — refusing to write"
+            )
+
     os.makedirs(ckpt_dir, exist_ok=True)
     final_path = os.path.join(ckpt_dir, f"step_{step:07d}.pt")
     tmp_path = final_path + ".tmp"
@@ -256,7 +328,7 @@ def save_checkpoint(
     logger.success(f"Checkpoint saved → {final_path}")
 
 
-def load_checkpoint(model, optimizer, path: str, ddp: bool) -> int:
+def load_checkpoint(model, optimizer, path: str, ddp: bool, cfg=None) -> int:
     """
     Restore model + optimizer from disk, returning the step to resume at.
 
@@ -276,12 +348,29 @@ def load_checkpoint(model, optimizer, path: str, ddp: bool) -> int:
         path      -- absolute path to a `step_{N:07d}.pt` file produced by
                      `save_checkpoint`
         ddp       -- whether the model is FSDP-wrapped; must match the save run
+        cfg       -- current run's model config; when provided, the checkpoint's
+                     stored `vocab_size` is compared against `cfg.vocab_size`
+                     and a mismatch raises ValueError. Defended here so a
+                     tokenizer swap between runs fails loud instead of loading
+                     weights with the wrong embedding table shape.
 
     Returns:
         The step number the checkpoint was taken at; the caller advances the
         training loop from this value.
+
+    Raises:
+        ValueError if `cfg` is provided and the checkpoint's vocab_size
+        disagrees with `cfg.vocab_size`.
     """
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
+
+    if cfg is not None:
+        ckpt_vocab = ckpt.get("vocab_size")
+        if ckpt_vocab is not None and ckpt_vocab != cfg.vocab_size:
+            raise ValueError(
+                f"Checkpoint vocab_size ({ckpt_vocab}) does not match "
+                f"current cfg.vocab_size ({cfg.vocab_size}); tokenizer may have changed"
+            )
 
     if ddp:
         with FSDP.state_dict_type(
@@ -354,6 +443,14 @@ def main():
 
     master = rank == 0
 
+    # ------------------------------------------------------------------
+    # Seed (reproducibility)
+    # ------------------------------------------------------------------
+    seed = 42
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    random.seed(seed)
+
     if master:
         logger.info(
             f"GPUs: {torch.cuda.device_count()}  |  World size: {world_size}  |  Device: {device}"
@@ -395,8 +492,8 @@ def main():
     # Model
     # ------------------------------------------------------------------
     cfg = mythos_3b()
-    cfg.vocab_size = vocab_size
-    cfg.max_seq_len = seq_len
+    cfg = replace(cfg, vocab_size=vocab_size, max_seq_len=seq_len)
+    _validate_vocab_compatibility(encoding, cfg)
 
     bf16_ok = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     amp_dtype = torch.bfloat16 if bf16_ok else torch.float16
@@ -451,7 +548,7 @@ def main():
         latest = existing_ckpts[-1]
         if master:
             logger.info(f"Resuming from checkpoint: {latest}")
-        start_step = load_checkpoint(model, optimizer, latest, ddp)
+        start_step = load_checkpoint(model, optimizer, latest, ddp, cfg=cfg)
         if master:
             logger.success(f"Resumed at step {start_step}")
 
@@ -459,7 +556,13 @@ def main():
     # Dataset + DataLoader
     # ------------------------------------------------------------------
     dataset = FineWebEduDataset(encoding, seq_len, dataset_subset, rank, world_size)
-    loader = DataLoader(dataset, batch_size=micro_batch, num_workers=4, pin_memory=True)
+    loader = DataLoader(
+        dataset,
+        batch_size=micro_batch,
+        num_workers=4,
+        pin_memory=True,
+        worker_init_fn=_seed_worker,
+    )
 
     # ------------------------------------------------------------------
     # Training loop
@@ -477,7 +580,7 @@ def main():
         for g in optimizer.param_groups:
             g["lr"] = cur_lr
 
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         loss_accum = 0.0
 
         for micro_step in range(grad_accum):
@@ -496,14 +599,23 @@ def main():
                 else model.no_sync()
             )
             with sync, amp_ctx:
+                # TODO(P3.8): when USE_GRAD_CHECKPOINT is True, wrap the
+                # RecurrentBlock forward (not the whole model) with
+                # torch.utils.checkpoint.checkpoint(..., use_reentrant=False).
+                # Left as TODO until FSDP+activation-checkpoint interaction
+                # is validated — see comment at USE_GRAD_CHECKPOINT definition.
                 logits = model(x)
                 loss = nn.functional.cross_entropy(
                     logits.view(-1, vocab_size), y.view(-1)
                 )
                 loss = loss / grad_accum
 
+            loss_value = loss.item()
+            if not math.isfinite(loss_value):
+                raise RuntimeError(f"Non-finite loss at step {step}: {loss_value}")
+
             loss.backward()
-            loss_accum += loss.item()
+            loss_accum += loss_value
 
         # FSDP shards parameters, so `nn.utils.clip_grad_norm_` would clip
         # against each rank's local norm and miss the cross-shard gather.
