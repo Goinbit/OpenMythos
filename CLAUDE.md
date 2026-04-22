@@ -277,6 +277,34 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · Stage 4.4 · MythosConfig 嵌套拆分 + 完全向后兼容
+
+**分支:** `main` · **commits:** 4 个(config / variants / test / docs)
+**Agents:** 1 个 · **完成 IDs:** **P4.4**
+
+### ✅ 完成
+- `open_mythos/config.py`:新增 `AttentionConfig`(8 字段) / `MoEConfig`(5 字段,含 `moe_balance_alpha`) / `RecurrenceConfig`(3 字段),每个 frozen+__post_init__ 本地校验
+- 顶层 `MythosConfig`:8 core 字段 + 3 嵌套子配置;`__post_init__` 做跨组校验(`dim % n_heads`, GQA `n_heads % n_kv_heads`, `lora_rank <= dim`)
+- **零破坏性**:`__init__` 拦截 flat kwargs 自动路由到子配置;17 个 `@property` 反向访问器让 `cfg.n_heads` 式读取不变
+- `MythosConfig.from_flat(**kwargs)` classmethod 留作显式意图
+- `variants.py` 7 个 preset 全部迁到嵌套形式(值 byte-identical)
+- `TestNestedConfig` +5 tests
+
+### 📊 测试变化
+- before: 168 passed / 4 skipped
+- after: **173 passed / 4 skipped**(+5)
+
+### 🔑 关键决策 / 发现
+- **用 `__init__` 拦截而非只给 `from_flat`**:这样 `test_main.py` / `variants.py` / training 脚本 / 外部使用者都不需改动。flat 和 nested kwargs 不允许混用(`TypeError`)
+- **属性访问器有 17 个**:每个旧扁平字段都有 @property 反向映射。这是 cfg.n_heads 风格零迁移的关键
+- **跨组校验留在顶层** `MythosConfig.__post_init__`,子配置只校验本地不变量
+- **unknown-field 拦截**:`__init__` 对未知 kwarg 直接 `TypeError`,保留旧 dataclass 行为(typo 不会静默丢失)
+- **`dataclasses.replace` 兼容**:保留 `attention/moe/recurrence` 为 dataclass fields 意味着 `replace(cfg, vocab_size=...)` 自动把 3 个子配置 copy 过去。training 脚本 + `test_variants.py` 里的 `dataclasses.replace` 调用无需改动
+
+### 🧭 留到下阶段
+- **Stage 4.3** — Protocol + factory(下一步,基于新嵌套 config 更自然)
+- **Stage 4.5** — training 模块化(最后)
+
 ## 2026-04-23 · Stage 4.2 · moda.py → experimental/ + primitives 去重 + MoEFFN opt-in balance loss
 
 **分支:** `main` · **commits:** 3 个(P4.2 refactor x2 + docs log)
