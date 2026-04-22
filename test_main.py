@@ -1724,5 +1724,64 @@ class TestMoEBalanceLoss:
         assert balance_loss.item() > 0.0
 
 
+# ---------------------------------------------------------------------------
+# P4.4: MythosConfig nested split — backward compat + cross-group validation
+# ---------------------------------------------------------------------------
+
+
+class TestNestedConfig:
+    """Stage 4.4: MythosConfig is now a composition of AttentionConfig,
+    MoEConfig, RecurrenceConfig. Flat-kwarg construction and .n_heads-style
+    accessors preserved for backward compat; cross-group invariants (e.g.
+    dim % n_heads) validated at the top-level __post_init__."""
+
+    def test_nested_construction_equivalent_to_from_flat(self):
+        """Building via nested sub-configs vs flat kwargs must produce equal configs."""
+        from open_mythos.config import AttentionConfig, MoEConfig, RecurrenceConfig
+
+        nested = MythosConfig(
+            vocab_size=100, dim=64, max_seq_len=16,
+            prelude_layers=1, coda_layers=1,
+            attention=AttentionConfig(attn_type="gqa", n_heads=4, n_kv_heads=2),
+            moe=MoEConfig(n_experts=4, n_experts_per_tok=2,
+                          n_shared_experts=1, expert_dim=16),
+            recurrence=RecurrenceConfig(max_loop_iters=2, lora_rank=4),
+        )
+        flat = MythosConfig(
+            vocab_size=100, dim=64, max_seq_len=16,
+            prelude_layers=1, coda_layers=1,
+            attn_type="gqa", n_heads=4, n_kv_heads=2,
+            n_experts=4, n_experts_per_tok=2,
+            n_shared_experts=1, expert_dim=16,
+            max_loop_iters=2, lora_rank=4,
+        )
+        assert nested == flat
+
+    def test_nested_attn_validation_local(self):
+        """AttentionConfig.__post_init__ rejects bad attn_type before top-level validation."""
+        from open_mythos.config import AttentionConfig
+        with pytest.raises(ValueError, match="attn_type"):
+            AttentionConfig(attn_type="xxx")
+
+    def test_nested_cross_group_validation_dim_heads(self):
+        """dim % n_heads is a cross-group check: dim is core, n_heads is attention."""
+        with pytest.raises(ValueError, match="dim.*divisible.*n_heads"):
+            gqa_cfg(dim=50, n_heads=4, n_kv_heads=2)
+
+    def test_nested_cross_group_validation_lora(self):
+        """lora_rank <= dim is a cross-group check: lora_rank is recurrence, dim is core."""
+        with pytest.raises(ValueError, match="lora_rank"):
+            gqa_cfg(dim=64, lora_rank=128)
+
+    def test_flat_accessor_compatibility(self):
+        """cfg.n_heads, cfg.attn_type, etc. continue to work via @property accessors."""
+        cfg = gqa_cfg(n_heads=4, n_experts=4)
+        assert cfg.n_heads == 4
+        assert cfg.n_heads == cfg.attention.n_heads
+        assert cfg.attn_type == cfg.attention.attn_type
+        assert cfg.n_experts == cfg.moe.n_experts
+        assert cfg.max_loop_iters == cfg.recurrence.max_loop_iters
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])
