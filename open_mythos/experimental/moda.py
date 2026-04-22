@@ -54,6 +54,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from open_mythos.primitives.norm import RMSNorm
+from open_mythos.primitives.expert import Expert as DeepSeekExpert
+
 
 @dataclass
 class MoDAConfig:
@@ -126,34 +129,6 @@ class MoDAConfig:
 # ---------------------------------------------------------------------------
 # Primitives
 # ---------------------------------------------------------------------------
-
-
-class RMSNorm(nn.Module):
-    """Root Mean Square Layer Normalization (no bias, no mean subtraction)."""
-
-    def __init__(self, dim: int, eps: float = 1e-6) -> None:
-        """Create an RMSNorm layer.
-
-        Args:
-            dim: Feature dimension to normalise over (the last axis of input).
-            eps: Stability constant added before the reciprocal square-root to
-                 prevent division by zero when the RMS is near zero.
-        """
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Normalise *x* by its root-mean-square and apply a learnable scale.
-
-        Args:
-            x: Input tensor of arbitrary shape ``[..., dim]``.
-
-        Returns:
-            Normalised tensor, same shape as *x*.
-        """
-        rms = x.pow(2).mean(-1, keepdim=True).add(self.eps).rsqrt()
-        return x * rms * self.weight
 
 
 class RotaryEmbedding(nn.Module):
@@ -258,49 +233,6 @@ def apply_rotary_emb(
 # ---------------------------------------------------------------------------
 # DeepSeek MoE FFN
 # ---------------------------------------------------------------------------
-
-
-class DeepSeekExpert(nn.Module):
-    """Single fine-grained SwiGLU expert.
-
-    Faithful to DeepSeek-V3 ``Expert``:
-        output = w2( SiLU(w1(x)) ⊙ w3(x) )
-
-    where w1 is the gate projection, w3 the up-projection, w2 the
-    down-projection — identical to a SwiGLU FFN at smaller hidden dim.
-
-    Args:
-        d_model:    Input / output dimension.
-        hidden_dim: Expert intermediate dimension (≪ dense FFN hidden_dim).
-    """
-
-    def __init__(self, d_model: int, hidden_dim: int) -> None:
-        """Create a single fine-grained SwiGLU expert.
-
-        Args:
-            d_model:    Token hidden dimension (input and output size).
-            hidden_dim: Expert intermediate dimension.  Typically much
-                        smaller than the dense FFN hidden dim — set to
-                        ``dense_hidden / m`` where *m* is the fine-grained
-                        segmentation factor so total activated FLOPs match
-                        the dense baseline.
-        """
-        super().__init__()
-        self.w1 = nn.Linear(d_model, hidden_dim, bias=False)  # gate
-        self.w3 = nn.Linear(d_model, hidden_dim, bias=False)  # up
-        self.w2 = nn.Linear(hidden_dim, d_model, bias=False)  # down
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute ``w2( SiLU(w1(x)) ⊙ w3(x) )``.
-
-        Args:
-            x: Token features assigned to this expert, shape
-               ``[num_assigned_tokens, d_model]``.
-
-        Returns:
-            Expert output, shape ``[num_assigned_tokens, d_model]``.
-        """
-        return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 
 class DeepSeekGate(nn.Module):
@@ -652,9 +584,9 @@ class _SharedFFN(nn.Module):
                         (``n_shared_experts × expert_hidden_dim``).
         """
         super().__init__()
-        self.w1 = nn.Linear(d_model, hidden_dim, bias=False)
-        self.w3 = nn.Linear(d_model, hidden_dim, bias=False)
-        self.w2 = nn.Linear(hidden_dim, d_model, bias=False)
+        self.gate = nn.Linear(d_model, hidden_dim, bias=False)
+        self.up = nn.Linear(d_model, hidden_dim, bias=False)
+        self.down = nn.Linear(hidden_dim, d_model, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply the shared SwiGLU FFN to every token.
@@ -665,7 +597,7 @@ class _SharedFFN(nn.Module):
         Returns:
             Transformed features, shape ``[B*T, d_model]``.
         """
-        return self.w2(F.silu(self.w1(x)) * self.w3(x))
+        return self.down(F.silu(self.gate(x)) * self.up(x))
 
 
 # ---------------------------------------------------------------------------
