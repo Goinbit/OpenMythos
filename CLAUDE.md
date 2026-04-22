@@ -277,6 +277,34 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · Stage 4.2 · moda.py → experimental/ + primitives 去重 + MoEFFN opt-in balance loss
+
+**分支:** `main` · **commits:** 3 个(P4.2 refactor x2 + docs log)
+**Agents:** 1 个(general-purpose,按 plan phases 串行执行)
+**完成 IDs:** **P4.2**
+
+### ✅ 完成
+- `open_mythos/moda.py` 整体搬到 `open_mythos/experimental/moda.py`,加 `__init__.py` 标注实验性
+- `tests/test_moda.py` → `tests/test_experimental_moda.py`(import 路径同步改一行)
+- moda 里本地 `class RMSNorm` 删除 → `from open_mythos.primitives.norm import RMSNorm`
+- moda 里本地 `class DeepSeekExpert` 删除 → `from open_mythos.primitives.expert import Expert as DeepSeekExpert`,所有 `.w1/.w2/.w3` 改为 `.gate/.up/.down`(grep 确认零残余)
+- `open_mythos/moe.py::MoEFFN.forward` 新增 `return_balance_loss: bool = False` opt-in,默认行为不变;`__init__` 接受 `moe_balance_alpha: float = 0.0`;`_balance_loss` 私有方法实现 DeepSeek-V3 公式
+- `test_main.py::TestMoEBalanceLoss` +2 tests 守护:default 返回 tensor / opt-in 返回 (tensor, scalar loss)
+
+### 📊 测试变化
+- before: 166 passed / 4 skipped
+- after: **168 passed / 4 skipped**(+2)
+
+### 🔑 关键决策 / 发现
+- **RotaryEmbedding 保持本地** — Explore 建议的,因 moda 用 real-valued rotate-half,primitives 用 complex view_as_complex,两种 paradigm,强行统一风险高于收益
+- **Backward compat 彻底**:opt-in 布尔参数默认 False,所有现有 MoEFFN 调用(blocks.py、model.py 等)零改动
+- **没碰 DeepSeekGate 等 moda-only 类** — 它们只存在于 experimental 变体,无对应 primitives
+
+### 🧭 留到下阶段
+- **Stage 4.4** — MythosConfig 嵌套拆分 + from_flat shim(下一步)
+- **Stage 4.3** — Protocol + factory(4.4 完成后)
+- **Stage 4.5** — training 模块化(最后)
+
 ## 2026-04-23 · Stage 4.1 · main.py 拆分成模块树
 
 **分支:** `main` · **commits:** `8e0fa10` + 本日志条目
