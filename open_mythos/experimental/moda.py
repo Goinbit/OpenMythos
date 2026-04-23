@@ -830,6 +830,24 @@ class MoDABlock(nn.Module):
         """
         B, T, _ = x.shape
 
+        # SILENT-FAILURE GUARD: depth-write RoPE (and attention RoPE below)
+        # assume ``cos`` / ``sin`` span the CURRENT forward's token positions.
+        # MoDA rebuilds the depth KV cache per forward today, so position ==
+        # index-in-batch. A future autoregressive-decode refactor must slice
+        # cos/sin to the current token's absolute position — otherwise
+        # position-0 rotation is silently applied to every decoded token
+        # (the same class of bug that bit main.py GQA/MLA's generate path;
+        # see ANALYSIS_REPORT silent-failure catalog). Check up front so the
+        # error message is actionable rather than an opaque tensor-shape
+        # failure deep inside attention.
+        if cos.shape[-2] != T:
+            raise RuntimeError(
+                f"MoDA k_write RoPE: cos.shape[-2]={cos.shape[-2]} does not "
+                f"match the current token count T={T}. If you added "
+                f"autoregressive decode, slice cos/sin to the current token's "
+                f"absolute positions rather than passing the full [0, T) table."
+            )
+
         # Post-norm attention sub-layer
         x = self.norm_attn(x + self.attn(x, depth_k_cache, depth_v_cache, cos, sin))
 
@@ -845,7 +863,8 @@ class MoDABlock(nn.Module):
             self.v_write(x).view(B, T, self._n_heads_kv, self._head_dim).transpose(1, 2)
         )
 
-        # RoPE on k_write for positional consistency during future depth reads
+        # RoPE on k_write for positional consistency during future depth reads.
+        # cos/sin shape vs T is already guarded at the top of forward().
         k_write = apply_rotary_emb(k_write, cos, sin)
 
         return x, k_write, v_write, balance_loss

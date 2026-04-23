@@ -336,3 +336,56 @@ class TestDeepSeekGate:
         assert gate.bias.shape == (4,)
         assert gate.bias.dtype == torch.float32
         assert torch.all(gate.bias == 0.0)
+
+
+# ---------------------------------------------------------------------------
+# MoDA k_write RoPE position guard
+# ---------------------------------------------------------------------------
+
+
+class TestMoDAKWriteRopeGuard:
+    """Silent-failure guard: depth-write RoPE binds absolute positions 0..T-1.
+
+    MoDA's depth KV cache is currently rebuilt per forward, so cos/sin
+    spanning ``[0, T)`` matches the tokens. A future autoregressive-decode
+    refactor that keeps the same cos/sin but feeds T=1 tokens at position
+    > 0 would silently apply position-0 rotation — the exact class of bug
+    already fixed in main.py's GQA/MLA generate paths.
+
+    The guard in ``MoDABlock.forward`` (open_mythos/experimental/moda.py)
+    raises RuntimeError when ``cos.shape[-2] != T``. This test exercises
+    that guard.
+    """
+
+    def test_matching_cos_sin_accepted(self):
+        """Happy path: cos/sin aligned with T must run without raising."""
+        from open_mythos.experimental.moda import MoDABlock
+
+        torch.manual_seed(42)
+        cfg = _tiny_cfg()
+        block = MoDABlock(cfg)
+        x = torch.randn(B, T, cfg.d_model)
+        head_dim = cfg.head_dim
+        cos = torch.randn(1, 1, T, head_dim)
+        sin = torch.randn(1, 1, T, head_dim)
+        # Empty depth cache at layer 0 — first layer has nothing to read.
+        out, k_w, v_w, bal = block(x, [], [], cos, sin)
+        assert out.shape == x.shape
+
+    def test_mismatched_cos_sin_raises(self):
+        """cos/sin shorter than T must raise RuntimeError with an actionable message."""
+        from open_mythos.experimental.moda import MoDABlock
+
+        torch.manual_seed(42)
+        cfg = _tiny_cfg()
+        block = MoDABlock(cfg)
+        x = torch.randn(B, T, cfg.d_model)
+        head_dim = cfg.head_dim
+        # Pass a cos/sin pair with the wrong T to simulate a future-refactor
+        # mistake (e.g. passing the full [0, cfg.max_seq_len) table while the
+        # current forward only has T tokens).
+        wrong_T = T + 2
+        cos = torch.randn(1, 1, wrong_T, head_dim)
+        sin = torch.randn(1, 1, wrong_T, head_dim)
+        with pytest.raises(RuntimeError, match="MoDA k_write RoPE"):
+            block(x, [], [], cos, sin)
