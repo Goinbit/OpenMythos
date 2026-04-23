@@ -277,6 +277,47 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · 3 项收尾(_INIT_STD / GitHub Actions CI / P3.8 完成)
+
+**分支:** `main` · **commits:** `565ec81` `ad9b44c` `226db7b` + 本日志条目
+**Agents:** 无(直接手工)
+**完成 IDs:** P3.8(完结)+ 历史遗留清单 2 项
+
+### ✅ 完成
+- **`_INIT_STD` 常量提取**(`open_mythos/model.py:13`)— 3 处硬编码 `std=0.02` 消除:`model.py:89,91` + `experimental/moda.py:909`。python-reviewer LOW finding 消债
+- **GitHub Actions CI**(`.github/workflows/ci.yml`)— 2 jobs:
+  - **test** matrix py3.10/3.12:装 torch CPU wheel + datasets/transformers/loguru,跑全量 pytest(ignore tokenizer 防 HF 下载)
+  - **lint** ruff check(continue-on-error 作为咨询,逐步收紧)
+  - concurrency group 自动取消同 ref 的 stale 跑,`workflow_dispatch` 允许手动触发
+- **P3.8 `USE_GRAD_CHECKPOINT` 实装**:
+  - 新函数 `training.trainer.apply_grad_checkpoint_if_enabled(model)` — flag 为 False 时 no-op,True 时 walk 全模型,把每个 `RecurrentBlock.forward` 替换为 `torch.utils.checkpoint.checkpoint(..., use_reentrant=False)`
+  - 挂接在 `training/run_3b.py:38` — 构造后、FSDP wrap 前(正确顺序:checkpoint 单元须是 FSDP 的分片单元)
+  - `use_reentrant=False` 强制 — reentrant 在 FSDP+grad_accum 下会静默丢失 backward
+  - `Trainer.run()` 里的 `TODO(P3.8)` 注释替换为指向构造期 wrap 的说明
+  - `run_3b.py` 仍 **60 行**(P4.5 硬闸保持)
+- `TestGradCheckpointWrap` +3 测试:`test_noop_when_disabled` / `test_wrapping_preserves_forward_equivalence` / `test_wrapping_preserves_gradient_flow`
+- **依赖装齐**:`.venv` 里装了 `transformers 5.6.1`(用清华镜像,36s)
+
+### 📊 测试变化
+- before: 184 passed / 0 skipped
+- after: **187 passed / 0 skipped**(+3 TestGradCheckpointWrap)
+
+### 🔑 关键决策 / 发现
+- **`model.recurrent.forward is orig_forward` 不可靠** — Python bound method 每次访问生成新对象。改用 `"forward" not in instance.__dict__` 检测实例级 shadow 是否存在,稳
+- **`use_reentrant=False` 是 FSDP 必选** — reentrant 模式下 non-root autograd 路径丢 backward,静默错但难察觉
+- **wrap 必须在 FSDP 前** — 否则 FSDP 看到的是未 checkpoint 的 forward,wrap 无效果(甚至破坏 FlatParam 视图)
+- **`run_3b.py` 通过分号单行挂接** (`model = OpenMythos(cfg); apply_grad_checkpoint_if_enabled(model)`)保持 60 行硬闸
+- **tokenizer tests 保持 `--ignore`** — 装了 transformers 但第一次运行要下载 HF 模型,CI 和本地都不稳;预先在 CI yaml 里也 ignore 掉
+
+### 🧭 留到下阶段
+- **RouterProtocol 抽出**(Stage 4.3 预批延迟项,仍挂着)
+- **LTI clamp 边界 training 监控**(ANALYSIS_REPORT silent-failure)
+- **`moda.py::k_write` RoPE 相对位置 runtime guard**(ANALYSIS_REPORT silent-failure)
+- **pre-commit hooks / mypy 接入**(基础设施)
+- **Stage 5 全部条目** — 需 GPU
+
+---
+
 ## 2026-04-23 · P4.5 收尾 · 提取 training/checkpoint.py(修 415 行软偏差)
 
 **分支:** `main` · **commits:** `d748b51` + 本日志条目
