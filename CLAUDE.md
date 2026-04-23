@@ -277,6 +277,34 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · Stage 4.3 · Protocol + factory + 单 freqs_cis buffer
+
+**分支:** `main` · **commits:** 5 个
+**Agents:** 1 个 · **完成 IDs:** **P4.3**(RouterProtocol 按预批延迟)
+
+### ✅ 完成
+- `open_mythos/attention/protocol.py` + `factory.py`:`AttentionProtocol`(runtime_checkable) + `build_attention(cfg)`
+- `open_mythos/recurrence/protocol.py` + `factory.py`:`InjectionProtocol` + `build_injection(cfg)`
+- `GQAttention.freqs_cis_dim` / `MLAttention.freqs_cis_dim` — 暴露 rope-dim 让 model 单 buffer 预计算
+- `model.py`:移除 `freqs_cis_mla` 第二 buffer,只按 attention 类型预计算对应维度的单 buffer;forward 不再有 attn_type 条件分支
+- `blocks.py::TransformerBlock`:`build_attention(cfg)` 替换硬编码三元
+- `recurrence/block.py::RecurrentBlock`:`build_injection(cfg)` 替换 `LTIInjection(cfg.dim)`
+- 保留直接构造路径(测试仍可 `GQAttention(cfg)`)— Option A coexist 策略
+- **RouterProtocol 延迟**(Explore 建议,MoEFFN 路由与 FFN 耦合紧)
+
+### 📊 测试变化
+- before: 173 passed / 4 skipped
+- after: **178 passed / 4 skipped**(+5 TestProtocolFactory)
+
+### 🔑 关键决策 / 发现
+- **单 buffer 优化无数值变化** — 原来两 buffer 里只有一个被实际读,新的单 buffer 用了相同维度的 precompute_rope_freqs,数值等价
+- **`@runtime_checkable` 让 Protocol 可做 isinstance 检查** — 无需显式继承,structural typing
+- **`build_attention` 有第二道防线** ValueError — config 层已拒绝 bad attn_type,但工厂也自防 bypass 情形
+
+### 🧭 留到下阶段
+- **Stage 4.5** — training 模块化(最后一块)
+- **未来 PR** — RouterProtocol 抽离(需先解耦 MoEFFN)
+
 ## 2026-04-23 · Stage 4.4 · MythosConfig 嵌套拆分 + 完全向后兼容
 
 **分支:** `main` · **commits:** 4 个(config / variants / test / docs)
