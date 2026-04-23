@@ -277,6 +277,33 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · P4.5 收尾 · 提取 training/checkpoint.py(修 415 行软偏差)
+
+**分支:** `main` · **commits:** `d748b51` + 本日志条目
+**Agents:** 无(直接手工 surgical)
+**完成 IDs:** 无新 ID — 补齐 P4.5 的 400 行软闸
+
+### ✅ 完成
+- 新 `training/checkpoint.py` (195 行):`_list_ckpts` + `save_checkpoint` + `load_checkpoint` 整段搬出,docstring 逐字保留
+- `training/trainer.py` **415 → 241 行**(-174),删除 3 函数定义,从 `training.checkpoint` import 并在 `__all__` 中保留 re-export(保护 run_3b.py 60 行单行 import 不破)
+- `training/3b_fine_web_edu.py` shim:checkpoint 符号改从 `training.checkpoint` 直接导入(canonical 路径)
+- `training/run_3b.py` 维持 **60 行**(P4.5 硬闸)— 单行 `from training.trainer import Trainer, _list_ckpts, load_checkpoint` 通过 trainer.py `__all__` re-export 解析
+
+### 📊 测试变化
+- before: 184 passed / 0 skipped
+- after: **184 passed / 0 skipped**(纯 refactor)
+
+### 🔑 关键决策 / 发现
+- **Re-export 为何保留在 trainer.py**:删 re-export 后 run_3b.py 必须把单行 import 拆两行,60 → 61 破 P4.5 硬闸。re-export 成本(3 行 `__all__`)小于破硬闸,留之
+- **Canonical vs backward-compat 分层**:外部消费者(`3b_fine_web_edu.py`)走 canonical 路径 `training.checkpoint`;内部 aggregate 消费者(`run_3b.py` 在 training 包内)走 `training.trainer` re-export 保紧凑。双层设计未来清理只改一行
+- **所有 training/*.py 现在 ≤ 400 行**:checkpoint 195 / trainer 241 / run_3b 60 / shim 49
+
+### 🧭 留到下阶段
+- 无 — Stage 4 所有硬+软闸门齐备
+- 下一阶段候选保持上次日志:RouterProtocol / GitHub Actions CI / Stage 5 规模化
+
+---
+
 ## 2026-04-23 · Stage 4.5 · training 模块化 + eval hook + 决定论守护
 
 **分支:** `main` · **commits:** 7 个
