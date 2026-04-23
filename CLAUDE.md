@@ -277,6 +277,38 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · Silent-failure 残余清零(LTI 监控 + MoDA k_write guard)
+
+**分支:** `main` · **commits:** `619d286` `18647c2` + 本日志条目
+**Agents:** 无 · **完成 IDs:** 无新 ID — ANALYSIS_REPORT silent-failure-hunter 残余清单 #2 + #3
+
+### ✅ 完成
+- **LTI boundary_saturation() 方法**(`open_mythos/recurrence/lti.py`)
+  - `get_A()` 里 `log_dt + log_A` 被 clamp 到 `[-20, 20]`;+20 → `A≈0`(通道死),-20 → `A≈1`(通道静态)
+  - 新方法返回 `{"low_fraction", "high_fraction", "total"}`,margin 默认 1.0
+  - 训练脚本后续可周期性调用 + 当 `total > 5%` 时 warn
+- **MoDA k_write RoPE 位置 guard**(`open_mythos/experimental/moda.py::MoDABlock.forward`)
+  - 深度 KV cache 当前每 forward 重建,cos/sin 覆盖 `[0, T)` 与 token 位置一致
+  - 未来若加 autoregressive decode 而忘切 cos/sin,会静默用 position-0 旋转每个 decode token(主路径 GQA/MLA generate 曾有同样 bug)
+  - 入口处 `if cos.shape[-2] != T: raise RuntimeError(...)` 在 attention 前先抛,错误消息 actionable
+
+### 📊 测试变化
+- before: 191 passed / 0 skipped
+- after: **197 passed / 0 skipped**(+6)
+- `TestLTIInjection` +4(default healthy / high sat / low sat / partial)
+- `TestMoDAKWriteRopeGuard` +2(happy path / mismatch raises)
+
+### 🔑 关键决策 / 发现
+- **guard 用 `if ... raise` 而非 `assert`** — `python -O` 会剥离 assert,训练时关键不变量需要真 raise
+- **MoDA guard 放在 forward 入口**(而非 k_write 调用处)— attention 在 k_write 前会先因 cos/sin shape 挂掉(opaque 错误),提前 guard 给出可行动的消息
+- **LTI 监控方法不注入训练循环** — 保持 LTIInjection 无副作用,训练脚本按需调用。未来 Stage 5 规模化训练时再自动化
+
+### 🧭 留到下阶段
+- **pre-commit hooks + mypy 接入**(基础设施,剩余)
+- **Stage 5 全部条目** — 需 GPU
+
+---
+
 ## 2026-04-23 · P4.3 收尾 · RouterProtocol 抽出
 
 **分支:** `main` · **commits:** `875f84e` + 本日志条目
