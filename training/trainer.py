@@ -83,7 +83,11 @@ def apply_grad_checkpoint_if_enabled(model: nn.Module) -> int:
     wrapped_count = 0
     for module in model.modules():
         if isinstance(module, RecurrentBlock):
-            module.forward = _make_wrapped(module.forward)
+            # Intentional instance-level forward shadow to wrap in checkpoint.
+            # mypy rejects method assignment in general; the runtime behaviour
+            # is well-defined and required by the activation-checkpointing
+            # pattern.
+            module.forward = _make_wrapped(module.forward)  # type: ignore[method-assign]
             wrapped_count += 1
 
     if wrapped_count:

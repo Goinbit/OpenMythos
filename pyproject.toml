@@ -59,6 +59,28 @@ pytest = "*"
 [tool.ruff]
 line-length = 88
 
+[tool.mypy]
+python_version = "3.10"
+# Scope: lint the library surface + training modules. Tests intentionally
+# excluded — they monkey-patch internals and exercise API edges where strict
+# typing would require extensive Any / cast noise without improving signal.
+files = ["open_mythos", "training"]
+exclude = [
+    # Experimental variant: its public contract is informal and it uses its
+    # own RotaryEmbedding paradigm that doesn't type-check cleanly alongside
+    # the complex-number primitives module. Revisit if moda graduates.
+    "open_mythos/experimental/",
+]
+# loguru / datasets / transformers / torch sub-modules ship incomplete stubs;
+# swallowing import errors lets us type-check the first-party code without
+# needing a full typeshed build per dep.
+ignore_missing_imports = true
+# Gentle baseline: no strict Optional, no untyped-def enforcement yet.
+# Tighten progressively — the CI lint job runs advisory-only for now.
+warn_unused_ignores = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+
 [tool.black]
 target-version = ["py310"]
 line-length = 88

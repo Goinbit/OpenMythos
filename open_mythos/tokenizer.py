@@ -60,4 +60,10 @@ class MythosTokenizer:
         Returns:
             str: Decoded string representation of the token IDs.
         """
-        return self.tokenizer.decode(token_ids, skip_special_tokens=True)
+        # AutoTokenizer.decode overloads return List[str] when given batched
+        # input; we always pass a flat List[int] so the concrete return is
+        # always str. mypy can't narrow through the Union without a stub
+        # override, so assert + ignore return-value.
+        out = self.tokenizer.decode(token_ids, skip_special_tokens=True)
+        assert isinstance(out, str), f"expected str from tokenizer.decode, got {type(out)}"
+        return out

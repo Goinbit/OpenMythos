@@ -37,13 +37,13 @@ def main() -> None:
     dt = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
     model = OpenMythos(cfg); apply_grad_checkpoint_if_enabled(model)  # no-op when USE_GRAD_CHECKPOINT=False
     if ddp:
-        model = FSDP(model, sharding_strategy=ShardingStrategy.FULL_SHARD,
+        model = FSDP(model, sharding_strategy=ShardingStrategy.FULL_SHARD,  # type: ignore[assignment]
                      mixed_precision=MixedPrecision(param_dtype=dt, reduce_dtype=dt, buffer_dtype=dt),
                      auto_wrap_policy=ModuleWrapPolicy({TransformerBlock, RecurrentBlock}), device_id=li)
         amp = nullcontext()
     else:
         model = model.to(device)
-        amp = torch.amp.autocast(device_type="cuda", dtype=dt) if "cuda" in device else nullcontext()
+        amp = torch.amp.autocast(device_type="cuda", dtype=dt) if "cuda" in device else nullcontext()  # type: ignore[assignment]
     opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WD, betas=(0.9, 0.95), fused=True)
     ga = max(1, 256 // (ws * MB)); gbt = ws * MB * ga * SEQ_LEN; total = TARGET_TOKENS // gbt
     ckpts = _list_ckpts(CKPT_DIR)
