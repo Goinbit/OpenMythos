@@ -277,6 +277,43 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-24 · mypy 零错基线 + pre-commit + CI typecheck job
+
+**分支:** `main` · **commits:** `a33d1c6` `7623aec` + 本日志条目
+**Agents:** 无 · **完成 IDs:** 无新 ID — 基础设施残余清单 2 项
+
+### ✅ 完成
+- **mypy 零错基线**:配置 `[tool.mypy]` 到 `pyproject.toml`(python 3.10 / files=open_mythos+training / experimental 排除 / ignore_missing_imports)
+  - 初扫 5 个错,surgical 修完:
+    - `tokenizer.py:63` Union[str, List[str]] 窄化(isinstance assert + return)
+    - `attention/gqa.py:106` `enable_gqa` torch<2.5 不认 — `type: ignore[call-arg]` 并注释 try/except 运行时兜底
+    - `trainer.py:86` `module.forward =` 方法赋值 — `type: ignore[method-assign]`(activation checkpoint pattern 必需)
+    - `run_3b.py:40,46` `model`/`amp` 类型窄化 — `type: ignore[assignment]` 保留 60 行硬闸
+  - `python -m mypy --no-incremental` → **Success: no issues found in 34 source files**
+- **`.pre-commit-config.yaml`** 新建 — 3 repos:
+  - `pre-commit-hooks v5.0.0`:trailing-whitespace / end-of-file / yaml/toml check / large-file guard(500KB)/ merge-conflict / debug-statements
+  - `ruff-pre-commit v0.14.1`:`ruff --fix` + `ruff-format`(替代 black/isort/flake8)
+  - `mirrors-mypy v1.20.2`:从 `pyproject.toml` 读配置,只扫 open_mythos+training
+- **CI `typecheck` job** 加入 `.github/workflows/ci.yml` — **不带 continue-on-error**(强制闸);baseline 0 error,退化即阻塞 PR
+
+### 📊 测试变化
+- before: 197 passed / 0 skipped
+- after: **197 passed / 0 skipped**(纯基础设施,无测试增减)
+- mypy: 5 errors → **0 errors**(首次 green)
+- CI jobs: 2 → **3**(test / lint / typecheck)
+
+### 🔑 关键决策 / 发现
+- **`type: ignore[specific-code]` 胜于泛化 `type: ignore`** — `warn_unused_ignores=true` 让 stale ignore 自动暴露,加代码可 grep 精确
+- **experimental/ 排除** — moda 用独立 RoPE paradigm,与 primitives/ 复数路径不同源,强行跨 typecheck 噪声大于信号;moda 毕业时再拉入
+- **pre-commit 不自动 install** — 配置提供给贡献者,不在 CI 上作为门;CI 直接跑 ruff + mypy 够
+- **mypy typecheck 是硬闸**(vs ruff 是咨询)— mypy baseline 0 稳定,退化是真 bug;ruff 基线还未清,保持 continue-on-error 逐步收
+
+### 🧭 留到下阶段
+- **Stage 5 全部条目** — 需 GPU(本地做不了)
+- **ruff baseline 归零** — 把 CI lint job 从 continue-on-error 转硬闸(打扫风格小问题)
+
+---
+
 ## 2026-04-23 · Silent-failure 残余清零(LTI 监控 + MoDA k_write guard)
 
 **分支:** `main` · **commits:** `619d286` `18647c2` + 本日志条目
