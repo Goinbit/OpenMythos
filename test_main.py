@@ -1783,5 +1783,59 @@ class TestNestedConfig:
         assert cfg.max_loop_iters == cfg.recurrence.max_loop_iters
 
 
+# ---------------------------------------------------------------------------
+# P4.3: Protocol + factory dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestProtocolFactory:
+    """Stage 4.3: build_attention / build_injection factories replace
+    hardcoded `if cfg.attn_type` dispatch. AttentionProtocol and
+    InjectionProtocol let alternative backends slot in without touching
+    TransformerBlock / RecurrentBlock."""
+
+    def test_build_attention_gqa_returns_gqa_instance(self):
+        from open_mythos.attention.factory import build_attention
+        cfg = gqa_cfg()
+        attn = build_attention(cfg)
+        assert isinstance(attn, GQAttention)
+
+    def test_build_attention_mla_returns_mla_instance(self):
+        from open_mythos.attention.factory import build_attention
+        cfg = mla_cfg()
+        attn = build_attention(cfg)
+        assert isinstance(attn, MLAttention)
+
+    def test_build_attention_invalid_attn_type_raises(self):
+        """The config layer rejects bad attn_type. The factory defends itself too
+        in case someone bypasses config validation (e.g., via frozen patching)."""
+        from open_mythos.attention.factory import build_attention
+        cfg = gqa_cfg()
+        # Force a bad attn_type by patching the nested sub-config via
+        # object.__setattr__ (bypassing frozen).
+        object.__setattr__(cfg.attention, "attn_type", "xxx")
+        with pytest.raises(ValueError, match="unknown attn_type"):
+            build_attention(cfg)
+
+    def test_attention_instances_implement_protocol(self):
+        """runtime_checkable Protocol check — both GQA and MLA attention
+        expose freqs_cis_dim and the expected __call__ signature."""
+        from open_mythos.attention.factory import build_attention
+        from open_mythos.attention.protocol import AttentionProtocol
+        gqa = build_attention(gqa_cfg())
+        mla = build_attention(mla_cfg())
+        # runtime_checkable Protocol checks attributes + __call__ presence
+        assert isinstance(gqa, AttentionProtocol)
+        assert isinstance(mla, AttentionProtocol)
+        assert isinstance(gqa.freqs_cis_dim, int) and gqa.freqs_cis_dim > 0
+        assert isinstance(mla.freqs_cis_dim, int) and mla.freqs_cis_dim > 0
+
+    def test_build_injection_returns_lti(self):
+        from open_mythos.recurrence.factory import build_injection
+        cfg = gqa_cfg()
+        inj = build_injection(cfg)
+        assert isinstance(inj, LTIInjection)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])
