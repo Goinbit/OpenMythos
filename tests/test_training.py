@@ -267,17 +267,23 @@ class TestVocabSizeValidation:
             )
 
     def test_dataclasses_replace_is_used(self):
-        train_script_path = (
-            Path(__file__).resolve().parent.parent / "training" / "3b_fine_web_edu.py"
+        # P4.5: training script was split across training/*.py in Stage 4.5.
+        # Check the new entry point (run_3b.py) where cfg construction lives.
+        train_dir = Path(__file__).resolve().parent.parent / "training"
+        sources = "\n".join(
+            (train_dir / name).read_text()
+            for name in ("run_3b.py", "3b_fine_web_edu.py")
         )
-        source = train_script_path.read_text()
-        assert "cfg.vocab_size =" not in source, (
+        assert "cfg.vocab_size =" not in sources, (
             "training script must use dataclasses.replace, not mutation"
         )
-        assert "cfg.max_seq_len =" not in source, (
+        assert "cfg.max_seq_len =" not in sources, (
             "training script must use dataclasses.replace, not mutation"
         )
-        assert "from dataclasses import replace" in source or "dataclasses.replace" in source
+        assert (
+            "from dataclasses import replace" in sources
+            or "dataclasses.replace" in sources
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -286,26 +292,38 @@ class TestVocabSizeValidation:
 
 
 class TestTrainingOptimizations:
+    # P4.5: training script split across training/*.py in Stage 4.5. Each
+    # property below now lives in the specific module that owns that concern.
+
+    def _training_src(self) -> str:
+        train_dir = Path(__file__).resolve().parent.parent / "training"
+        return "\n".join(
+            (train_dir / name).read_text()
+            for name in (
+                "3b_fine_web_edu.py",
+                "run_3b.py",
+                "trainer.py",
+                "data.py",
+                "constants.py",
+                "schedule.py",
+                "eval.py",
+            )
+        )
+
     def test_zero_grad_uses_set_to_none(self):
-        src = (
-            Path(__file__).resolve().parent.parent / "training" / "3b_fine_web_edu.py"
-        ).read_text()
+        src = self._training_src()
         assert "zero_grad()" not in src, "zero_grad() without set_to_none=True found"
         assert "zero_grad(set_to_none=True)" in src
 
     def test_dataset_buffer_no_copy_slice(self):
-        src = (
-            Path(__file__).resolve().parent.parent / "training" / "3b_fine_web_edu.py"
-        ).read_text()
+        src = self._training_src()
         # The old O(n) slice pattern should not be used
         assert "buf = buf[" not in src, "O(n) list slice pattern still present"
         # Either deque or head-index must be present
         assert "deque" in src or "head +=" in src or "head_idx" in src
 
     def test_gradient_checkpointing_flag_exists(self):
-        src = (
-            Path(__file__).resolve().parent.parent / "training" / "3b_fine_web_edu.py"
-        ).read_text()
+        src = self._training_src()
         assert "USE_GRAD_CHECKPOINT" in src or "gradient_checkpointing" in src.lower()
 
 
