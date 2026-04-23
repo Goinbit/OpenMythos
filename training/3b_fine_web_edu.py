@@ -15,13 +15,13 @@ from training.data import (
     _validate_vocab_compatibility,
     build_dataloader,
 )
-from training.schedule import get_lr
-from training.trainer import (
-    Trainer,
+from training.checkpoint import (
     _list_ckpts,
     load_checkpoint,
     save_checkpoint,
 )
+from training.schedule import get_lr
+from training.trainer import Trainer
 
 
 def main() -> None:
