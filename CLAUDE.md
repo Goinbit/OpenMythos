@@ -277,6 +277,41 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · P4.3 收尾 · RouterProtocol 抽出
+
+**分支:** `main` · **commits:** `875f84e` + 本日志条目
+**Agents:** 无(直接手工 surgical)
+**完成 IDs:** **P4.3**(Stage 4.3 预批延迟项交付,Stage 4.3 完整完成)
+
+### ✅ 完成
+- `open_mythos/moe.py` 新增三件套:
+  - `RouterProtocol`(runtime_checkable):`(topk_idx, topk_scores, scores) = router(x)` + `n_experts` + `topk` 属性
+  - `BiasRouter(nn.Module)`:DeepSeek-V3 aux-loss-free 路由器,拥有 `linear` + `router_bias` buffer;从 `MoEFFN.forward` 的 5 行内联路由逻辑逐字迁移
+  - `build_router(cfg) -> RouterProtocol`:工厂函数,当前仅 BiasRouter;未来 grouped / hash / learned-gating 变体在此挂接
+- `MoEFFN.__init__`:`self.router = build_router(cfg)` 替换内联 `nn.Linear + register_buffer`
+- `MoEFFN.forward`:`(topk_idx, topk_scores, scores) = self.router(flat)` 替换 5 行路由
+- `test_main.py::TestRouterProtocol` +4 测试:`build_router → BiasRouter` / Protocol runtime check / forward 形状 + 行归一化 / MoEFFN state-dict 新布局
+- `test_main.py::TestMoEVectorized.test_vectorized_moe_matches_reference` 更新 2 行:`moe.router.linear(flat)` / `moe.router.router_bias`(从旧 `moe.router` / `moe.router_bias`)
+
+### 📊 测试变化
+- before: 187 passed / 0 skipped
+- after: **191 passed / 0 skipped**(+4 TestRouterProtocol)
+- `moe.py` 169 → 264 行(≤400)
+
+### 🔑 关键决策 / 发现
+- **state_dict 布局变了** — `router.weight` / `router_bias` → `router.linear.weight` / `router.router_bias`。接受打破因为本项目无预发布 checkpoints
+- **`test_router_bias_not_grad` 无需改** — router_bias 在新路径 `router.router_bias` 仍是 buffer,"not in params" 断言仍成立
+- **`_balance_loss` 方法签名不动** — BiasRouter 返回的 `scores`/`topk_idx` 与原内联路径同形,`MoEFFN._balance_loss(topk_idx, scores, N)` 调用处零改动
+- **所有三工厂齐了**:`build_attention` / `build_injection` / `build_router`。Stage 4.3 完整交付
+
+### 🧭 留到下阶段
+- **LTI clamp 边界训练监控**(ANALYSIS_REPORT silent-failure 残余)
+- **`moda.py::k_write` RoPE 相对位置 runtime guard**(ANALYSIS_REPORT silent-failure 残余)
+- **pre-commit hooks / mypy 接入**(基础设施)
+- **Stage 5 全部条目** — 需 GPU
+
+---
+
 ## 2026-04-23 · 3 项收尾(_INIT_STD / GitHub Actions CI / P3.8 完成)
 
 **分支:** `main` · **commits:** `565ec81` `ad9b44c` `226db7b` + 本日志条目
