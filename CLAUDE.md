@@ -277,6 +277,45 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-04-23 · Stage 4.5 · training 模块化 + eval hook + 决定论守护
+
+**分支:** `main` · **commits:** 7 个
+**Agents:** 1 个 · **完成 IDs:** **P4.5**(Stage 4 全部完成)
+
+### ✅ 完成
+- `training/3b_fine_web_edu.py` 663 行 → 5 新模块 + 1 薄 shim
+  - `constants.py`:`USE_GRAD_CHECKPOINT`
+  - `schedule.py`:`get_lr()`
+  - `data.py`:`FineWebEduDataset` + `_seed_worker` + `_validate_vocab_compatibility` + `build_dataloader()` 工厂
+  - `trainer.py`:`_list_ckpts` / `save_checkpoint` / `load_checkpoint` + `Trainer` class 封装 loop + save/load
+  - `eval.py`:`build_validation_loader()` + `compute_val_loss()` + `PeriodicEvalHook` **(新增 eval 路径)**
+  - `run_3b.py`:60 行入口,编排 Trainer + eval_hook
+  - `3b_fine_web_edu.py`:降为 shim,保留 tests 的 importlib-by-path 路径
+- `tests/test_training.py::TestTrainingDeterminism` +2 tests(主 + sanity)
+
+### 📊 测试变化
+- before: 178 passed / 4 skipped
+- after: **180 passed / 4 skipped**(+2,比 plan 多 1 个 sanity 测试,对决定论 gate 自检有价值)
+
+### 🔑 关键决策 / 发现
+- **shim 保留 top-level re-exports**:tests 用 `importlib.util.spec_from_file_location` 按路径加载该文件,需要 `save_checkpoint` / `get_lr` 等符号在 top level 可见
+- **Trainer 不引入新 FSDP wrap 点**:原有 `FSDP(model, ...)` 留在 `run_3b.py` 的编排层,Trainer 只接收已 wrap 的 model
+- **eval hook 是 Stage 4.5 的新增功能**(非纯 refactor),为 Stage 5 大规模训练铺路
+- **决定论测试带 sanity**:加一个反向测试(seed=42 vs seed=77 应该不同)避免"两次调用都返回同一个 cache"的假阳
+- **源码正则类测试自动跟随**:`TestTrainingOptimizations` / `test_dataclasses_replace_is_used` 改为扫整个 `training/*.py` 包,P3.8 / P1.4 的不变量保护跟着代码移动
+
+### 🧭 Stage 4 全部完成
+- Stage 4.1 ✅ main.py 模块树
+- Stage 4.2 ✅ moda 去重 + experimental 降级
+- Stage 4.4 ✅ MythosConfig 嵌套 + 100% 向后兼容
+- Stage 4.3 ✅ Protocol + factory + 单 freqs_cis buffer
+- Stage 4.5 ✅ training 模块化 + eval hook + 决定论
+
+**下一阶段候选(超出 Stage 4):**
+- **RouterProtocol** — 独立 PR,需先解耦 MoEFFN 路由与 FFN
+- **GitHub Actions CI** — 把 180 测试做成 PR 闸
+- **Stage 5** — TP / EP / activation checkpointing / paged cache / 长 context(需 GPU)
+
 ## 2026-04-23 · Stage 4.3 · Protocol + factory + 单 freqs_cis buffer
 
 **分支:** `main` · **commits:** 5 个
