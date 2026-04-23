@@ -50,6 +50,42 @@ class LTIInjection(nn.Module):
         # Clamp keeps the product finite in float32 for any gradient step size.
         return torch.exp(-torch.exp((self.log_dt + self.log_A).clamp(-20, 20)))
 
+    def boundary_saturation(self, margin: float = 1.0) -> dict:
+        """Report the fraction of channels saturating the ±20 clamp boundary.
+
+        The clamp in :meth:`get_A` silently pins ``log_dt + log_A`` to the
+        range ``[-20, 20]`` to keep ``exp(exp(·))`` finite. Channels that hit
+        a boundary collapse to a degenerate A:
+
+        - ``log_dt + log_A → +20``: ``A ≈ exp(-exp(20)) ≈ 0`` — the channel's
+          state contribution decays to zero every step (effectively "dead").
+        - ``log_dt + log_A → -20``: ``A ≈ exp(-exp(-20)) ≈ 1`` — the channel's
+          state never decays (effectively static; no LTI dynamics).
+
+        Either is a silent failure mode during training. This method exposes
+        the count so a caller (e.g. training-loop periodic logger) can flag
+        saturation above a threshold.
+
+        Args:
+            margin -- how close to ±20 counts as "near-boundary" (default 1.0
+                      → channels within 1 unit of the clamp).
+
+        Returns:
+            Dict with three keys:
+              - ``low_fraction``:  fraction of channels where A ≈ 1 (static)
+              - ``high_fraction``: fraction of channels where A ≈ 0 (dead)
+              - ``total``:         sum of the two
+        """
+        with torch.no_grad():
+            combined = self.log_dt + self.log_A  # broadcast scalar + (dim,)
+            low = float((combined < -20.0 + margin).float().mean().item())
+            high = float((combined > 20.0 - margin).float().mean().item())
+        return {
+            "low_fraction": low,
+            "high_fraction": high,
+            "total": low + high,
+        }
+
     def forward(
         self, h: torch.Tensor, e: torch.Tensor, transformer_out: torch.Tensor
     ) -> torch.Tensor:

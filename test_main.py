@@ -507,6 +507,44 @@ class TestLTIInjection:
         assert A.min().item() >= 0.0
         assert not torch.isnan(A).any()
 
+    def test_boundary_saturation_default_healthy(self):
+        """A freshly initialised LTI (log_A=log_dt=0) is well clear of the
+        ±20 clamp — both low and high saturation fractions must be 0."""
+        stats = self.inj.boundary_saturation()
+        assert stats["low_fraction"] == 0.0
+        assert stats["high_fraction"] == 0.0
+        assert stats["total"] == 0.0
+
+    def test_boundary_saturation_detects_high_saturation(self):
+        """Force log_A to +30 on all channels → combined > 20-margin → A ≈ 0
+        (channel-dead). boundary_saturation must report high_fraction ≈ 1.0."""
+        with torch.no_grad():
+            self.inj.log_A.fill_(30.0)
+        stats = self.inj.boundary_saturation(margin=1.0)
+        assert stats["high_fraction"] == 1.0
+        assert stats["low_fraction"] == 0.0
+
+    def test_boundary_saturation_detects_low_saturation(self):
+        """Force log_A to -30 → combined < -20+margin → A ≈ 1 (static).
+        boundary_saturation must report low_fraction ≈ 1.0."""
+        with torch.no_grad():
+            self.inj.log_A.fill_(-30.0)
+        stats = self.inj.boundary_saturation(margin=1.0)
+        assert stats["low_fraction"] == 1.0
+        assert stats["high_fraction"] == 0.0
+
+    def test_boundary_saturation_partial_channels(self):
+        """Only half the channels saturated → fraction reflects the split."""
+        with torch.no_grad():
+            # First half far into the high-saturation zone, second half near zero.
+            half = self.inj.log_A.shape[0] // 2
+            self.inj.log_A[:half] = 30.0
+            self.inj.log_A[half:] = 0.0
+        stats = self.inj.boundary_saturation(margin=1.0)
+        # Fractions are over all channels, so half-at-boundary ⇒ 0.5.
+        assert abs(stats["high_fraction"] - 0.5) < 1e-6
+        assert stats["low_fraction"] == 0.0
+
 
 # ---------------------------------------------------------------------------
 # ACTHalting
