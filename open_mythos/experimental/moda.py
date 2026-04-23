@@ -904,9 +904,10 @@ class MoDAModel(nn.Module):
 
         Called automatically at the end of :meth:`__init__`.
         """
+        from open_mythos.model import _INIT_STD
         for m in self.modules():
             if isinstance(m, (nn.Linear, nn.Embedding)):
-                nn.init.normal_(m.weight, mean=0.0, std=0.02)
+                nn.init.normal_(m.weight, mean=0.0, std=_INIT_STD)
             elif isinstance(m, DeepSeekGate):
                 nn.init.kaiming_uniform_(m.weight, a=math.sqrt(5))
 

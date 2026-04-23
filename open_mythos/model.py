@@ -11,6 +11,11 @@ from open_mythos.primitives.norm import RMSNorm
 from open_mythos.primitives.rope import precompute_rope_freqs
 from open_mythos.recurrence.block import RecurrentBlock
 
+# Std deviation for weight init (matches GPT-2 family and DeepSeek-V3 convention).
+# Centralized here + exported for consistent use across main model and
+# experimental variants — prevents silent drift if one site is tuned.
+_INIT_STD: float = 0.02
+
 
 # ---------------------------------------------------------------------------
 # Full Model
@@ -83,12 +88,12 @@ class OpenMythos(nn.Module):
         self._init_weights()
 
     def _init_weights(self) -> None:
-        """Initialize all linear and embedding weights with N(0, 0.02)."""
+        """Initialize all linear and embedding weights with N(0, _INIT_STD)."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, std=0.02)
+                nn.init.normal_(m.weight, std=_INIT_STD)
             elif isinstance(m, nn.Embedding):
-                nn.init.normal_(m.weight, std=0.02)
+                nn.init.normal_(m.weight, std=_INIT_STD)
 
     @staticmethod
     def _causal_mask(seq_len: int, device: torch.device) -> torch.Tensor:
