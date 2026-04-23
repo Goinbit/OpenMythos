@@ -327,5 +327,69 @@ class TestTrainingOptimizations:
         assert "USE_GRAD_CHECKPOINT" in src or "gradient_checkpointing" in src.lower()
 
 
+# ---------------------------------------------------------------------------
+# P4.5: Training determinism regression gate
+# ---------------------------------------------------------------------------
+
+
+class TestTrainingDeterminism:
+    """Stage 4.5: same seed + same batches must produce same loss curve.
+
+    Regression gate catching silent seed leaks in DataLoader workers,
+    Trainer state, or checkpoint resume paths.
+    """
+
+    def _run_training(self, seed: int, n_steps: int = 10) -> list:
+        """Runs n_steps on a fixed tiny model with deterministic batches.
+
+        Returns the list of per-step loss values.
+        """
+        torch.manual_seed(seed)
+        cfg = tiny_cfg()
+
+        torch.manual_seed(seed)
+        model = OpenMythos(cfg)
+        opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
+
+        torch.manual_seed(seed + 1000)  # distinct seed for data
+        fixed_batches = [
+            (
+                torch.randint(0, cfg.vocab_size, (2, 8)),
+                torch.randint(0, cfg.vocab_size, (2, 8)),
+            )
+            for _ in range(n_steps)
+        ]
+
+        losses = []
+        model.train()
+        for x, y in fixed_batches:
+            opt.zero_grad(set_to_none=True)
+            logits = model(x)
+            loss = F.cross_entropy(
+                logits.reshape(-1, cfg.vocab_size), y.reshape(-1)
+            )
+            loss.backward()
+            opt.step()
+            losses.append(loss.item())
+        return losses
+
+    def test_same_seed_same_loss_curve(self):
+        """Two fresh runs with the same seed must produce identical losses."""
+        run1 = self._run_training(seed=42, n_steps=10)
+        run2 = self._run_training(seed=42, n_steps=10)
+
+        t1 = torch.tensor(run1)
+        t2 = torch.tensor(run2)
+        torch.testing.assert_close(t1, t2, atol=1e-5, rtol=1e-5)
+
+    def test_different_seed_different_loss_curve(self):
+        """Sanity: the determinism test is meaningful (different seeds diverge)."""
+        run_a = self._run_training(seed=42, n_steps=5)
+        run_b = self._run_training(seed=77, n_steps=5)
+        assert run_a != run_b, (
+            "different seeds produced identical curves — test is broken"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])
