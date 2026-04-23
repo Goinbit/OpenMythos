@@ -1319,9 +1319,11 @@ class TestMoEVectorized:
         # algorithm the module uses, then sum weighted expert outputs + shared.
         B, T, D = x.shape
         flat = x.view(B * T, D)
-        logits = moe.router(flat)
+        # Stage 4.3: moe.router is a BiasRouter module, not raw nn.Linear.
+        # Reach through to .linear and .router_bias for the reference path.
+        logits = moe.router.linear(flat)
         scores = torch.softmax(logits, dim=-1)
-        _, topk_idx = (logits + moe.router_bias).topk(moe.topk, dim=-1)
+        _, topk_idx = (logits + moe.router.router_bias).topk(moe.topk, dim=-1)
         topk_scores = scores.gather(-1, topk_idx)
         topk_scores = topk_scores / topk_scores.sum(dim=-1, keepdim=True).clamp(min=1e-9)
 
@@ -1835,6 +1837,66 @@ class TestProtocolFactory:
         cfg = gqa_cfg()
         inj = build_injection(cfg)
         assert isinstance(inj, LTIInjection)
+
+
+# ---------------------------------------------------------------------------
+# P4.3 completion: RouterProtocol + BiasRouter + build_router
+# ---------------------------------------------------------------------------
+
+
+class TestRouterProtocol:
+    """Stage 4.3 (P4.3) completion: MoE routing is now a swappable
+    Protocol-compliant module built via build_router(cfg). BiasRouter
+    is the default (DeepSeek-V3 aux-loss-free) implementation.
+
+    The routing logic previously lived inline in MoEFFN.forward; the
+    refactor moves it into BiasRouter so alternative routers (grouped,
+    hash-based, learned gating) slot in without touching MoEFFN itself.
+    """
+
+    def test_build_router_returns_bias_router(self):
+        from open_mythos.moe import BiasRouter, build_router
+        cfg = gqa_cfg()
+        r = build_router(cfg)
+        assert isinstance(r, BiasRouter)
+        assert r.n_experts == cfg.moe.n_experts
+        assert r.topk == cfg.moe.n_experts_per_tok
+
+    def test_bias_router_satisfies_protocol(self):
+        """BiasRouter passes isinstance(RouterProtocol) via runtime_checkable."""
+        from open_mythos.moe import RouterProtocol, build_router
+        r = build_router(gqa_cfg())
+        assert isinstance(r, RouterProtocol)
+
+    def test_bias_router_forward_shapes_and_renorm(self):
+        """Router output shapes match spec; topk_scores sums to 1 per row."""
+        from open_mythos.moe import build_router
+        torch.manual_seed(0)
+        cfg = gqa_cfg(n_experts=4, n_experts_per_tok=2)
+        r = build_router(cfg)
+        N = 6
+        x = torch.randn(N, cfg.dim)
+        topk_idx, topk_scores, scores = r(x)
+        assert topk_idx.shape == (N, cfg.n_experts_per_tok)
+        assert topk_scores.shape == (N, cfg.n_experts_per_tok)
+        assert scores.shape == (N, cfg.n_experts)
+        # Per-row sum of renormalized weights must be 1.0 (up to fp tol).
+        sums = topk_scores.sum(dim=-1)
+        torch.testing.assert_close(sums, torch.ones(N), atol=1e-5, rtol=1e-5)
+
+    def test_moe_ffn_uses_build_router(self):
+        """MoEFFN.router is now the BiasRouter module (not a raw nn.Linear).
+        State-dict layout reflects the wrap: router.linear.weight etc."""
+        from open_mythos.moe import BiasRouter
+        cfg = gqa_cfg()
+        moe = MoEFFN(cfg)
+        assert isinstance(moe.router, BiasRouter)
+        sd_keys = set(moe.state_dict().keys())
+        assert "router.linear.weight" in sd_keys
+        assert "router.router_bias" in sd_keys
+        # Pre-4.3 legacy paths must NOT be present.
+        assert "router.weight" not in sd_keys
+        assert "router_bias" not in sd_keys
 
 
 if __name__ == "__main__":

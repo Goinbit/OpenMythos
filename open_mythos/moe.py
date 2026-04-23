@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Protocol, Tuple, Union, runtime_checkable
 
 import torch
 import torch.nn as nn
@@ -6,6 +6,105 @@ import torch.nn.functional as F
 
 from open_mythos.config import MythosConfig
 from open_mythos.primitives.expert import Expert
+
+
+# ---------------------------------------------------------------------------
+# Router Protocol + default implementation (Stage 4.3 completion)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class RouterProtocol(Protocol):
+    """Structural contract for MoE token-to-expert routers.
+
+    A router consumes a flat token batch and returns three tensors that
+    together describe the dispatch plan. Any module that exposes the
+    three listed attributes + ``__call__`` signature satisfies the
+    Protocol — no explicit subclassing needed.
+
+    Attributes:
+        n_experts: total number of routed experts the router can pick from
+        topk:      number of experts to select per token
+
+    The call contract:
+        (topk_idx, topk_scores, scores) = router(x)
+
+        x          -- (N, D) flattened input where N = B*T
+        topk_idx   -- (N, K) int64, expert ids per token slot
+        topk_scores-- (N, K) float, renormalized gating weights (sum=1 per row)
+        scores     -- (N, n_experts) float, the full pre-top-K softmax
+                       distribution (needed for aux-loss balance penalties)
+    """
+
+    n_experts: int
+    topk: int
+
+    def __call__(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: ...
+
+
+class BiasRouter(nn.Module):
+    """DeepSeek-V3 aux-loss-free bias router.
+
+    The gate weights that flow into the dispatch come from an unbiased
+    softmax of a linear projection, so the gradient path is clean. A
+    separate per-expert bias buffer is added only at top-K argmax time
+    to steer under-used experts — never appearing in the weight gradient.
+    The bias is adjusted externally during training (e.g., +δ on unused
+    experts each step) to balance load without distorting the loss.
+
+    Attributes:
+        linear:      nn.Linear(dim, n_experts, bias=False) — the gate
+        router_bias: (n_experts,) buffer, non-grad, hand-tuned for balance
+        n_experts, topk: forwarded from cfg; expose for Protocol
+    """
+
+    def __init__(self, dim: int, n_experts: int, topk: int):
+        super().__init__()
+        self.n_experts = n_experts
+        self.topk = topk
+        self.linear = nn.Linear(dim, n_experts, bias=False)
+        # Non-grad load-balance bias; training-time adjustable.
+        self.register_buffer("router_bias", torch.zeros(n_experts))
+
+    def forward(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Route flat input tokens to expert slots.
+
+        Args:
+            x -- (N, D) flattened token batch.
+
+        Returns:
+            topk_idx    -- (N, K) expert assignments
+            topk_scores -- (N, K) renormalized weights, sum=1 per row
+            scores      -- (N, n_experts) full softmax (for balance loss)
+        """
+        logits = self.linear(x)
+        scores = F.softmax(logits, dim=-1)
+        _, topk_idx = (logits + self.router_bias).topk(self.topk, dim=-1)
+        topk_scores = scores.gather(-1, topk_idx)
+        # .clamp(min=1e-9) guards against fp16/bf16 softmax underflow (P0.3).
+        topk_scores = topk_scores / topk_scores.sum(dim=-1, keepdim=True).clamp(
+            min=1e-9
+        )
+        return topk_idx, topk_scores, scores
+
+
+def build_router(cfg: MythosConfig) -> RouterProtocol:
+    """Construct the router module matching ``cfg``.
+
+    Stage 4.3 (P4.3): currently only ``BiasRouter`` (DeepSeek-V3 style)
+    is implemented. Structured as a factory so future routers (grouped,
+    hash-based, learned gating variants) plug in without touching
+    ``MoEFFN`` itself.
+    """
+    return BiasRouter(
+        dim=cfg.dim,
+        n_experts=cfg.moe.n_experts,
+        topk=cfg.moe.n_experts_per_tok,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -45,9 +144,12 @@ class MoEFFN(nn.Module):
         self.topk = cfg.n_experts_per_tok
         self.moe_balance_alpha = moe_balance_alpha
 
-        self.router = nn.Linear(cfg.dim, cfg.n_experts, bias=False)
-        # load-balancing bias adjusted externally during training; not a gradient param
-        self.register_buffer("router_bias", torch.zeros(cfg.n_experts))
+        # Stage 4.3: router is a swappable Protocol-compliant submodule.
+        # Previously an inline nn.Linear + register_buffer pair; now built
+        # via factory so alternative routers plug in without touching MoEFFN.
+        # State-dict layout changed from router.weight / router_bias to
+        # router.linear.weight / router.router_bias (documented break).
+        self.router = build_router(cfg)
 
         self.routed_experts = nn.ModuleList(
             [Expert(cfg.dim, cfg.expert_dim) for _ in range(cfg.n_experts)]
@@ -81,15 +183,8 @@ class MoEFFN(nn.Module):
         B, T, D = x.shape
         flat = x.view(B * T, D)
 
-        # Aux-loss-free load balancing (DeepSeek-V3): the bias shifts only the
-        # selection of which experts fire so underused experts are picked more,
-        # but the gating weights come from unbiased softmax scores so the bias
-        # never shows up in the gradient.
-        logits = self.router(flat)  # (B*T, n_experts), unbiased
-        scores = F.softmax(logits, dim=-1)
-        _, topk_idx = (logits + self.router_bias).topk(self.topk, dim=-1)
-        topk_scores = scores.gather(-1, topk_idx)
-        topk_scores = topk_scores / topk_scores.sum(dim=-1, keepdim=True).clamp(min=1e-9)  # renorm
+        # Stage 4.3: delegate routing to the Router Protocol instance.
+        topk_idx, topk_scores, scores = self.router(flat)
 
         # P3.2: vectorized routed-expert dispatch.
         # Flatten the (token, k_slot) pairs so every top-K assignment is one
