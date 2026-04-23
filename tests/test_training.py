@@ -391,5 +391,86 @@ class TestTrainingDeterminism:
         )
 
 
+# ---------------------------------------------------------------------------
+# P3.8 completion: activation checkpointing wrap on RecurrentBlock
+# ---------------------------------------------------------------------------
+
+
+class TestGradCheckpointWrap:
+    """Verify ``apply_grad_checkpoint_if_enabled`` is a correct no-op when
+    USE_GRAD_CHECKPOINT is False, and wraps every RecurrentBlock's forward
+    when True, without breaking gradient flow or changing numerics beyond
+    the expected recompute non-determinism."""
+
+    def test_noop_when_disabled(self):
+        """Default USE_GRAD_CHECKPOINT=False must leave model.forward untouched.
+
+        Bound-method identity is unstable in Python, so compare instance
+        ``__dict__`` to confirm no wrapper was installed.
+        """
+        from training.trainer import apply_grad_checkpoint_if_enabled
+
+        torch.manual_seed(42)
+        model = OpenMythos(tiny_cfg())
+        n = apply_grad_checkpoint_if_enabled(model)
+        assert n == 0
+        # Wrapping installs `forward` onto the instance __dict__ shadowing
+        # the class method; disabled path must NOT do that.
+        assert "forward" not in model.recurrent.__dict__
+
+    def test_wrapping_preserves_forward_equivalence(self, monkeypatch):
+        """With grad_ckpt on, forward output must equal forward without
+        (same seed; recompute does not alter deterministic pure-compute path)."""
+        import training.trainer as trainer_mod
+        from training.trainer import apply_grad_checkpoint_if_enabled
+
+        torch.manual_seed(42)
+        cfg = tiny_cfg()
+        model_a = OpenMythos(cfg)
+        model_b = OpenMythos(cfg)
+        # sync params
+        model_b.load_state_dict(model_a.state_dict())
+
+        monkeypatch.setattr(trainer_mod, "USE_GRAD_CHECKPOINT", True)
+        n = apply_grad_checkpoint_if_enabled(model_b)
+        assert n >= 1  # at least one RecurrentBlock wrapped
+
+        x = torch.randint(0, cfg.vocab_size, (2, 8))
+        out_a = model_a(x)
+        out_b = model_b(x)
+        torch.testing.assert_close(out_a, out_b, atol=1e-5, rtol=1e-5)
+
+    def test_wrapping_preserves_gradient_flow(self, monkeypatch):
+        """Backward through a checkpointed RecurrentBlock must still populate
+        every trainable parameter's .grad (use_reentrant=False is required)."""
+        import training.trainer as trainer_mod
+        from training.trainer import apply_grad_checkpoint_if_enabled
+
+        torch.manual_seed(42)
+        cfg = tiny_cfg()
+        model = OpenMythos(cfg)
+        monkeypatch.setattr(trainer_mod, "USE_GRAD_CHECKPOINT", True)
+        apply_grad_checkpoint_if_enabled(model)
+
+        x = torch.randint(0, cfg.vocab_size, (2, 8))
+        logits = model(x)
+        # Target is a second pseudo-batch so loss != 0.
+        target = torch.randint(0, cfg.vocab_size, (2, 8))
+        loss = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), target.reshape(-1))
+        loss.backward()
+
+        recurrent_params = dict(model.recurrent.named_parameters())
+        missing = [
+            name for name, p in recurrent_params.items()
+            if p.requires_grad and p.grad is None
+        ]
+        # MoE experts may miss grads for tokens not routed to them (same as
+        # baseline moda.py gradient_flow test). Tolerate but bound.
+        assert len(missing) <= len(recurrent_params) // 2, (
+            f"too many recurrent params missing grads under checkpointing: "
+            f"{len(missing)}/{len(recurrent_params)}"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])

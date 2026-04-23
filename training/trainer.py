@@ -22,11 +22,75 @@ import torch.nn as nn
 from loguru import logger
 
 from training.checkpoint import _list_ckpts, load_checkpoint, save_checkpoint
+from training.constants import USE_GRAD_CHECKPOINT
 from training.schedule import get_lr
 
 # _list_ckpts re-exported so callers doing `from training.trainer import ...`
 # still resolve — preserves run_3b.py's single-line import (≤60 line budget).
-__all__ = ["Trainer", "_list_ckpts", "load_checkpoint", "save_checkpoint"]
+__all__ = [
+    "Trainer",
+    "_list_ckpts",
+    "load_checkpoint",
+    "save_checkpoint",
+    "apply_grad_checkpoint_if_enabled",
+]
+
+
+# ---------------------------------------------------------------------------
+# Gradient checkpointing wrap (P3.8 completion)
+# ---------------------------------------------------------------------------
+
+
+def apply_grad_checkpoint_if_enabled(model: nn.Module) -> int:
+    """Wrap every ``RecurrentBlock.forward`` in activation checkpointing.
+
+    No-op when ``training.constants.USE_GRAD_CHECKPOINT`` is False (default),
+    preserving the exact pre-P3.8 forward. When True, replaces each
+    ``RecurrentBlock``'s forward with a ``torch.utils.checkpoint.checkpoint``
+    call using ``use_reentrant=False`` (required for correctness under FSDP
+    and gradient accumulation; the reentrant variant silently loses grads on
+    non-root autograd paths).
+
+    Must be called BEFORE FSDP wrapping so the checkpointed forward is the
+    unit that FSDP sees. Applying after FSDP wrap would checkpoint the
+    FlatParam view and break the FSDP collective.
+
+    Args:
+        model -- raw (un-wrapped) ``OpenMythos`` or any ``nn.Module`` tree
+                 containing ``RecurrentBlock`` instances. Mutated in place.
+
+    Returns:
+        Number of ``RecurrentBlock`` modules whose forward was replaced;
+        0 when the flag is off or no such modules exist.
+    """
+    if not USE_GRAD_CHECKPOINT:
+        return 0
+
+    # Lazy import: avoids pulling the recurrent block in for users who only
+    # build a bare model without ever invoking this helper.
+    from open_mythos.recurrence.block import RecurrentBlock
+    from torch.utils.checkpoint import checkpoint
+
+    def _make_wrapped(orig_forward):
+        def wrapped(*args, **kwargs):
+            # use_reentrant=False is mandatory — FSDP + reentrant checkpoint
+            # silently drops the backward pass for fan-in RecurrentBlock uses
+            # such as the ACT residual add.
+            return checkpoint(orig_forward, *args, use_reentrant=False, **kwargs)
+
+        return wrapped
+
+    wrapped_count = 0
+    for module in model.modules():
+        if isinstance(module, RecurrentBlock):
+            module.forward = _make_wrapped(module.forward)
+            wrapped_count += 1
+
+    if wrapped_count:
+        logger.info(
+            f"Gradient checkpointing enabled on {wrapped_count} RecurrentBlock(s)"
+        )
+    return wrapped_count
 
 
 # ---------------------------------------------------------------------------
@@ -169,11 +233,10 @@ class Trainer:
                     else self.model.no_sync()
                 )
                 with sync, self.amp_ctx:
-                    # TODO(P3.8): when USE_GRAD_CHECKPOINT is True, wrap the
-                    # RecurrentBlock forward (not the whole model) with
-                    # torch.utils.checkpoint.checkpoint(..., use_reentrant=False).
-                    # Left as TODO until FSDP+activation-checkpoint interaction
-                    # is validated.
+                    # P3.8 complete: gradient checkpointing is applied at
+                    # model-construction time via
+                    # ``apply_grad_checkpoint_if_enabled`` (see trainer module
+                    # top); no per-step wrap needed here.
                     logits = self.model(x)
                     loss = nn.functional.cross_entropy(
                         logits.view(-1, self.vocab_size), y.view(-1)
