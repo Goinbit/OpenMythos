@@ -234,6 +234,97 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ---
 
+# 阶段里程碑 / Round Highlights
+
+**维护规则:** 每轮工作完成后**覆盖更新**本章节为当前整体状态快照。与下方"执行进度日志"互补:
+- 本章节 = **滚动快照**,只保留最新状态 + 最近一轮重点 + 下一轮候选。方便扫读、指导下一轮规划。
+- 下方日志 = **append-only 倒序历史**,per-phase 详细记录永久保留。
+
+---
+
+## 当前整体状态(截至 2026-04-24)
+
+| Stage | 状态 | 备注 |
+|---|---|---|
+| Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部 |
+| Stage 1 契约硬化 | ✅ 完成 | P1.1-P1.5 全部 |
+| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 + 覆盖 184+ tests |
+| Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
+| Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
+| Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
+
+**本地可推进范围内:0 技术债。** 剩余仅 GPU 依赖项 + 低价值风格清扫。
+
+### 基础设施齐备度
+
+| 项 | 状态 |
+|---|---|
+| pytest 守护 | ✅ 197 passed / 0 skipped |
+| GitHub Actions CI | ✅ 3 jobs(test / lint / typecheck) |
+| mypy 类型检查 | ✅ 0 errors / 34 files(硬闸) |
+| pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
+| Stop hook 日志强制 | ✅ `.claude/hooks/check_claude_md_updated.sh` |
+| Silent-failure-hunter 残余 | ✅ 0 项 |
+| 文件大小硬闸(400 行) | ✅ 全仓满足 · `run_3b.py` 60 行硬闸保持 |
+
+---
+
+## 最近一轮重点(2026-04-23 → 2026-04-24)
+
+### 交付总览 · 12 commits · 15 files · 197 tests
+
+| 批次 | Commits | 内容 |
+|---|---|---|
+| ①最优路线 3 项 | `565ec81` `ad9b44c` `226db7b` | `_INIT_STD` 常量 · GitHub Actions CI · P3.8 `USE_GRAD_CHECKPOINT` 实装 |
+| ② Stage 4.3 收尾 | `875f84e` | `RouterProtocol` + `BiasRouter` + `build_router` 工厂 |
+| ③ Silent-failure 清零 | `619d286` `18647c2` | LTI `boundary_saturation()` · MoDA `k_write` RoPE guard |
+| ④ 基础设施闭环 | `a33d1c6` `7623aec` | mypy 0 错基线 + `.pre-commit-config.yaml` + CI typecheck job |
+| docs | `92a8093` `737c4ad` `f46b040` `d55c8d3` | 4 条 CLAUDE.md 执行日志 |
+
+### 关键技术决策(未来同类场景可参考)
+
+1. **激活 checkpoint 挂接位置** — 必须在 FSDP wrap 之前(构造期,非训练期);`use_reentrant=False` 强制避免 FSDP+accum 下 silent 丢 backward
+2. **Protocol 工厂模式**(第三次应用):抽 `*Protocol` + `*(cfg)` 工厂,替代硬编码 `if cfg.xxx == "..."`。已有三套:`build_attention` / `build_injection` / `build_router`
+3. **Silent-failure guard 用 `raise` 不 `assert`** — `python -O` 剥离 assert,训练关键不变量必须真 raise(CLAUDE.md §通用工作规范 · 禁止项)
+4. **Guard 放 `forward` 入口而非下游调用处** — 错误消息可行动,不落到 opaque 的 tensor-shape 失败
+5. **`type: ignore[具体码]` 而非泛 `type: ignore`** + `warn_unused_ignores=true` — stale ignore 自动暴露
+6. **typecheck 直接硬闸 / lint 仍 advisory** — 基线清零的门 direct,基线未清的门 `continue-on-error` 先灰度
+7. **pre-commit 不作 CI 闸** — 本地提速工具;CI 独立跑 mypy+ruff 覆盖率足够
+8. **state_dict 布局允许打破**(前提:无预发布 checkpoint)— Router 抽出后 `router.weight` → `router.linear.weight`。在预发布期是可接受的破坏性变更
+
+### 里程碑数字对比
+
+| 维度 | 本轮起点(`5fe6470`) | 本轮终点(`d55c8d3`) | Δ |
+|---|---|---|---|
+| 测试数 | 184 | **197** | +13 |
+| mypy 错误 | 未配置 | **0** | 基线建立 |
+| CI jobs | 0 | **3** | +3 |
+| silent-failure 残余 | 3 | **0** | −3 |
+| 三工厂齐备度 | 2/3 | **3/3** | +1 |
+| P3.8 TODO | 1 处 | **0** | −1 |
+
+---
+
+## 下一轮候选(按可行性)
+
+### 🔴 GPU 必需(Stage 5 全体)
+- **P5.1 Tensor Parallelism** — `ColumnParallelLinear` / `RowParallelLinear` 抽象 · 2 路 TP 下 3B 模型 loss 与单卡 FSDP 等价
+- **P5.2 Expert Parallelism** — MoE `all_to_all` 跨 rank · 256 专家线性扩展 ≥75%
+- **P5.3 Activation Checkpointing 实装扩展** — P3.8 已挂接 CPU 路径 · GPU 验证 FSDP 交互与内存收益
+- **P5.4 Paged KV Cache** — 扩展 `StaticKVCache` 设计支持 8K+ decode · vLLM PagedAttention 兼容
+- **P5.5 长上下文 32K+** — 去除 `_causal_mask` 显式分配 · `variants.py` 中 `max_seq_len=1_000_000` 降级
+
+### 🟢 本地可做 · 低价值清扫
+- **ruff baseline 归零**:当前 CI `lint` job `continue-on-error: true`,清完后转硬闸
+- **docs/ mkdocs 渲染**:`docs/` 有 md 未渲染
+- **README.md 版本信息同步**:定期检查 PyPI badge + 文档链接
+
+### 🟡 未入 plan 但可考虑
+- **benchmarks/ harness** — 标准化 forward/backward/generate 计时,PR 前后对比
+- **`experimental/moda.py` 毕业**:若决定 MoDA 走主路径,需要 RoPE paradigm 统一、mypy 接管、primitives 对齐
+
+---
+
 # 执行进度日志(Execution Log)
 
 ## 维护规则
