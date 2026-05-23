@@ -7,8 +7,6 @@ ranks so grad-collection isn't perturbed by rank-0-only work.
 """
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 from torch.utils.data import DataLoader
 

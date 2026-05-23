@@ -69,10 +69,7 @@ jobs:
           cache: pip
       - run: pip install 'ruff>=0.5.1,<0.15.9'
       - name: ruff check
-        # Advisory only — enforce progressively. Failing lint does not block
-        # merge until the codebase is clean; flip `continue-on-error` to false
-        # once `ruff check .` returns zero issues on main.
-        continue-on-error: true
+        # Enforced: lint regressions block PR merge.
         run: ruff check .
 
   typecheck:

@@ -7,8 +7,6 @@ tiny dimensions so they run quickly on CPU.
 
 from __future__ import annotations
 
-import math
-
 import pytest
 import torch
 
