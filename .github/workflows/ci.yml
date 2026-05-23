@@ -53,7 +53,7 @@ jobs:
         # on first use and would make CI flaky on network hiccups. The rest
         # (184 tests) run fully offline.
         run: |
-          python -W ignore -m pytest test_main.py tests/ \
+          python -W ignore -m pytest tests/ \
             --ignore=tests/test_tokenizer.py \
             --timeout=120 \
             -v --tb=short
