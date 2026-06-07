@@ -368,6 +368,34 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · eval report compare latest/glob 自动发现
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — small LM 评估工具补齐
+
+### ✅ 完成
+- `examples/compare_small_lm_eval_reports.py` 支持 `--glob`,可从一个或多个 glob pattern 自动发现 eval report
+- `examples/compare_small_lm_eval_reports.py` 支持 `--latest N`,按 `generation_eval_<timestamp>.md` 文件名时间戳倒序选择最近 N 份报告
+- `resolve_report_paths(...)` 对 positional reports 与 glob matches 去重,保持非 latest 模式的输入优先顺序
+- `tests/test_compare_small_lm_eval_reports.py` 新增 glob 展开/latest 选择、positional+glob 去重、空输入报错回归测试
+- `docs/model_cards/openmythos_tinystories_15m_step105000_seq384_clean_v61.md` 与 `docs/runbooks/tinystories_v61_seq384_recovery.md` 记录 `--glob 'runs/generation_eval_*.md' --latest 3` 快速用法
+
+### 📊 测试变化
+- before:`tests/test_compare_small_lm_eval_reports.py` 红灯 `ImportError: cannot import name 'resolve_report_paths'`
+- after:`.venv-arm64/bin/python -m pytest tests/test_compare_small_lm_eval_reports.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py -q` → **39 passed**
+- `ruff check examples/compare_small_lm_eval_reports.py examples/evaluate_small_lm_generations.py examples/small_lm_eval_metrics.py examples/generate_small_lm.py examples/train_small_lm.py examples/resize_small_lm_context.py tests/test_compare_small_lm_eval_reports.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py` → **All checks passed**
+- CLI smoke:`.venv-arm64/bin/python -m examples.compare_small_lm_eval_reports --glob 'runs/generation_eval_*.md' --latest 3` → 成功输出最近 3 份 report 对比表
+- 文件行数:`examples/compare_small_lm_eval_reports.py` 235 行,`tests/test_compare_small_lm_eval_reports.py` 182 行
+
+### 🔑 关键决策 / 发现
+- `--latest` 采用文件名中的 eval timestamp,比 mtime 更稳定,也更符合 `generation_eval_<time>.md` 命名语义
+- glob 结果排序后追加到 positional reports,再统一去重;这让显式指定文件和自动发现可以混用
+- latest 模式会重排为最近优先,适合快速看刚跑出的调参报告
+
+### 🧭 留到下阶段
+- 可增加 CSV 输出,便于长期趋势图或电子表格分析
+- 可增加 `--require-eos 60/60` 一类 gate,让脚本直接作为调参验收工具
+
 ## 2026-06-07 · small LM eval report 对比 CLI
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交

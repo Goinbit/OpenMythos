@@ -3,6 +3,7 @@ from pathlib import Path
 from examples.compare_small_lm_eval_reports import (
     parse_eval_report,
     render_comparison_table,
+    resolve_report_paths,
 )
 
 
@@ -135,3 +136,47 @@ def test_parse_eval_report_rejects_non_eval_report(tmp_path):
         assert "Small LM Generation Evaluation" in str(exc)
     else:
         raise AssertionError("expected non-eval report to fail")
+
+
+def test_resolve_report_paths_expands_glob_and_selects_latest_reports(tmp_path):
+    for timestamp in [100, 300, 200]:
+        (tmp_path / f"generation_eval_{timestamp}.md").write_text(
+            COMPACT_REPORT,
+            encoding="utf-8",
+        )
+    (tmp_path / "notes.md").write_text("# Notes\n", encoding="utf-8")
+
+    paths = resolve_report_paths(
+        reports=[],
+        glob_patterns=[str(tmp_path / "generation_eval_*.md")],
+        latest=2,
+    )
+
+    assert [path.name for path in paths] == [
+        "generation_eval_300.md",
+        "generation_eval_200.md",
+    ]
+
+
+def test_resolve_report_paths_deduplicates_positional_and_glob_matches(tmp_path):
+    first = tmp_path / "generation_eval_100.md"
+    second = tmp_path / "generation_eval_200.md"
+    first.write_text(COMPACT_REPORT, encoding="utf-8")
+    second.write_text(COHERENCE_REPORT, encoding="utf-8")
+
+    paths = resolve_report_paths(
+        reports=[str(first)],
+        glob_patterns=[str(tmp_path / "generation_eval_*.md")],
+        latest=0,
+    )
+
+    assert paths == [first, second]
+
+
+def test_resolve_report_paths_requires_at_least_one_report_source():
+    try:
+        resolve_report_paths(reports=[], glob_patterns=[], latest=0)
+    except ValueError as exc:
+        assert "provide at least one report" in str(exc)
+    else:
+        raise AssertionError("expected missing report source to fail")

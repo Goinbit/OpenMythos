@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -141,9 +142,64 @@ def render_comparison_table(summaries: list[EvalReportSummary]) -> str:
     return "\n".join(lines)
 
 
+def _generation_eval_timestamp(path: Path) -> int:
+    match = re.search(r"generation_eval_(\d+)\.md$", path.name)
+    if match:
+        return int(match.group(1))
+    return int(path.stat().st_mtime)
+
+
+def resolve_report_paths(
+    reports: list[str],
+    glob_patterns: list[str],
+    latest: int,
+) -> list[Path]:
+    if latest < 0:
+        raise ValueError("--latest must be greater than or equal to 0")
+
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+
+    def add_path(path: Path) -> None:
+        normalized = path.expanduser()
+        if normalized not in seen:
+            resolved.append(normalized)
+            seen.add(normalized)
+
+    for report in reports:
+        add_path(Path(report))
+    for pattern in glob_patterns:
+        for match in sorted(glob.glob(pattern)):
+            add_path(Path(match))
+
+    if not resolved:
+        raise ValueError("provide at least one report path or --glob pattern")
+
+    if latest:
+        resolved = sorted(
+            resolved,
+            key=lambda path: (_generation_eval_timestamp(path), str(path)),
+            reverse=True,
+        )[:latest]
+    return resolved
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("reports", nargs="+", help="Markdown eval reports to compare")
+    parser.add_argument("reports", nargs="*", help="Markdown eval reports to compare")
+    parser.add_argument(
+        "--glob",
+        action="append",
+        default=[],
+        dest="glob_patterns",
+        help="glob pattern for report files; may be passed more than once",
+    )
+    parser.add_argument(
+        "--latest",
+        type=int,
+        default=0,
+        help="select the N latest reports after combining positional and glob paths",
+    )
     parser.add_argument("--out", default="", help="optional output Markdown file")
     parser.add_argument(
         "--sort",
@@ -156,7 +212,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    summaries = [parse_eval_report(Path(report)) for report in args.reports]
+    report_paths = resolve_report_paths(
+        reports=args.reports,
+        glob_patterns=args.glob_patterns,
+        latest=args.latest,
+    )
+    summaries = [parse_eval_report(path) for path in report_paths]
     if args.sort == "preset":
         summaries.sort(key=lambda summary: summary.preset_set)
     elif args.sort == "path":

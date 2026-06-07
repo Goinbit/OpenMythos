@@ -180,6 +180,14 @@ python -m examples.compare_small_lm_eval_reports \
   runs/generation_eval_1780835469.md
 ```
 
+Or inspect the latest report files automatically:
+
+```bash
+python -m examples.compare_small_lm_eval_reports \
+  --glob 'runs/generation_eval_*.md' \
+  --latest 3
+```
+
 Use `compact-v61` for short demo outputs. Use `coherence-v2` for natural
 EOS-bounded coherence evaluation; it preserves the 60/60 EOS gate, improves
 story endings and character drift versus `coherence-v1`, and reduces repeated
