@@ -368,6 +368,39 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · v6 clean-text continuation runbook
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — v6 本地训练执行方案
+
+### ✅ 完成
+- 新增 `docs/runbooks/tinystories_v6_clean_continuation.md`,将 v5 → v6 本地训练流程固化为可复制 runbook
+- runbook 包含 Apple Silicon MPS preflight,确认 `.venv-arm64`、PyTorch/MPS 可用性和 v5 checkpoint 存在
+- runbook 包含 500-step smoke run,用于在完整训练前验证 `clean_text=True`、loss finite、MPS 吞吐稳定
+- runbook 包含完整 v6 训练命令:
+  - `--init-from checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt`
+  - `--steps 10000`
+  - `--seq-len 256`
+  - `--batch-size 8`
+  - `--lr 1e-4`
+  - `--eos-loss-weight 4.0`
+  - 输出到 `checkpoints/tinystories_mps_small_mythos_seq256_clean_v6.pt`
+- runbook 包含 stop/continue 规则、prompt-file 评估命令、两个单样本生成抽检命令和归档 checklist
+
+### 📊 测试变化
+- 代码行为未变更,未新增 Python 测试
+- `git diff --check` → 无 whitespace error
+- runbook 人工检查:命令均以仓库根目录和 `.venv-arm64` 为前提,不依赖新增脚本目录
+
+### 🔑 关键决策 / 发现
+- 不直接在 Codex 会话里启动长训练;10k-step MPS run 预计约 1-2 小时,由用户终端运行更可控
+- v6 使用 `--init-from` 而非 `--resume`,目的是从 v5 权重继续,但用 fresh optimizer + lower LR 做更稳的 clean-text continuation
+- `batch-size=8` 是 seq_len=256 的保守默认;如 MPS OOM,降到 `batch-size=4`
+
+### 🧭 留到下阶段
+- 用户运行 smoke/full v6 后,根据日志归档 `openmythos_tinystories_15m_step100000_seq256_clean_v6.pt`
+- 若 v6 优于 v5,新增 v6 model card 并更新当前最佳 checkpoint 指针
+
 ## 2026-06-07 · small LM 文本清理与生成输出净化
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
