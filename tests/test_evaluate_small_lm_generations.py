@@ -50,11 +50,26 @@ def test_get_preset_set_coherence_v1_biases_toward_story_completion():
     assert [preset.repetition_penalty for preset in presets] == [1.10, 1.10, 1.12]
 
 
+def test_get_preset_set_coherence_v2_adds_repetition_control():
+    presets = get_preset_set("coherence-v2")
+
+    assert len(presets) == 3
+    assert [preset.name for preset in presets] == [
+        "conservative",
+        "balanced",
+        "creative",
+    ]
+    assert [preset.stop_after_sentences for preset in presets] == [0, 0, 0]
+    assert [preset.temperature for preset in presets] == [0.58, 0.60, 0.70]
+    assert [preset.top_k for preset in presets] == [25, 25, 30]
+    assert [preset.repetition_penalty for preset in presets] == [1.10, 1.16, 1.12]
+
+
 def test_get_preset_set_rejects_unknown_name():
     try:
         get_preset_set("missing")
     except ValueError as exc:
-        assert "coherence-v1" in str(exc)
+        assert "coherence-v2" in str(exc)
     else:
         raise AssertionError("expected unknown preset set to fail")
 

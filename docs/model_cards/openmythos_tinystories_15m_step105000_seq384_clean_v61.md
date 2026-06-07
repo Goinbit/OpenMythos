@@ -8,7 +8,7 @@ focused on recovering v6's natural-stop regression.
 v6.1 is the current best TinyStories checkpoint in this local run. It keeps
 v6's lower validation-loss direction, reaches 60/60 EOS with the full seq384
 generation budget, and also reaches 60/60 EOS under the strict 256-token budget
-when evaluated with the `compact-v61` preset set.
+when evaluated with the `compact-v61` or `coherence-v2` preset sets.
 
 ## Checkpoint
 
@@ -71,6 +71,7 @@ Comparison with recent baselines:
 | Seq256 clean v6 | 100000 | 256 | 1.6520 | 58/60 | not measured | 58/60 @256 |
 | Seq384 clean v6.1 legacy | 105000 | 384 | 1.6227 | 59/60 | 59/60 | 60/60 @376 |
 | Seq384 clean v6.1 compact-v61 | 105000 | 384 | 1.6227 | 60/60 | not needed | 60/60 @256 |
+| Seq384 clean v6.1 coherence-v2 | 105000 | 384 | 1.6227 | 60/60 | not needed | 60/60 @256 |
 
 ## Recommended Generation
 
@@ -106,6 +107,19 @@ python -m examples.evaluate_small_lm_generations \
   --out-dir runs
 ```
 
+Batch evaluation with the recommended natural coherence preset set:
+
+```bash
+python -m examples.evaluate_small_lm_generations \
+  --checkpoint checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt \
+  --device mps \
+  --prompt-file eval_prompts/tinystories_natural_stop_20.txt \
+  --preset-set coherence-v2 \
+  --max-new-tokens 256 \
+  --stop-at-eos \
+  --out-dir runs
+```
+
 ## Evaluation Snapshot
 
 Latest local reports:
@@ -118,6 +132,8 @@ Latest local reports:
   `preset-set=compact-v61`, with quality and coherence summaries)
 - `runs/generation_eval_1780833963.md` (`max-new-tokens=256`,
   `preset-set=coherence-v1`, natural EOS text with quality and coherence summaries)
+- `runs/generation_eval_1780835469.md` (`max-new-tokens=256`,
+  `preset-set=coherence-v2`, mixed stability/repetition coherence preset)
 
 Natural-stop summary:
 
@@ -153,11 +169,13 @@ Preset comparison:
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | `compact-v61` | 60 | 60/60 | 35.8 | 0.30 | 17/60 | 45 | 16/60 | 1 |
 | `coherence-v1` | 60 | 60/60 | 89.0 | 0.48 | 31/60 | 25 | 9/60 | 16 |
+| `coherence-v2` | 60 | 60/60 | 85.9 | 0.44 | 33/60 | 29 | 8/60 | 14 |
 
-Use `compact-v61` for short demo outputs. Use `coherence-v1` for natural
-EOS-bounded coherence evaluation; it improves prompt adherence and endings, but
-also exposes more repetition because it does not trim after a fixed sentence
-count.
+Use `compact-v61` for short demo outputs. Use `coherence-v2` for natural
+EOS-bounded coherence evaluation; it preserves the 60/60 EOS gate, improves
+story endings and character drift versus `coherence-v1`, and reduces repeated
+trigram flags from 16 to 14. `coherence-v1` remains useful as the higher
+prompt-overlap reference.
 
 The remaining 256/300-token failure is the conservative Lily sample:
 
@@ -195,16 +213,17 @@ Representative long-tail sample:
 - Coherence metrics are lightweight heuristics, not a semantic judge. They are
   useful for local trend tracking and currently highlight weak prompt adherence,
   missing endings, and character drift as the main next frontier.
-- `coherence-v1` improves local coherence metrics, but produces longer samples
-  and more repeated trigrams, so it is an evaluation preset rather than the
-  default polished-demo preset.
+- `coherence-v2` improves local coherence metrics versus `compact-v61`, but
+  still produces longer samples and more repeated trigrams than the short-demo
+  preset, so it is an evaluation preset rather than the default polished-demo
+  preset.
 - The model has no instruction tuning, preference tuning, safety tuning, or
   factual grounding.
 
 ## Status
 
 Use v6.1 with `preset-set=compact-v61` as the current best short-demo setup.
-Use v6.1 with `preset-set=coherence-v1` when evaluating natural EOS-bounded
-story coherence. Use v5 only when comparing against the older strict 256-token
-legacy-preset baseline. Use v6 as the seq256 clean-text continuation reference
-point.
+Use v6.1 with `preset-set=coherence-v2` when evaluating natural EOS-bounded
+story coherence. Use `coherence-v1` as a prompt-overlap reference, v5 only when
+comparing against the older strict 256-token legacy-preset baseline, and v6 as
+the seq256 clean-text continuation reference point.

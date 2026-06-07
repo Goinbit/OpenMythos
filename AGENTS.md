@@ -368,6 +368,50 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · coherence-v2 repetition-aware preset 验证
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — small LM coherence preset 调参
+
+### ✅ 完成
+- `examples/evaluate_small_lm_generations.py` 新增 `coherence-v2` preset set,保留 `legacy` / `compact-v61` / `coherence-v1` 行为不变
+- `coherence-v2` 参数:
+  - conservative:`temperature=0.58 top_k=25 repetition_penalty=1.10 no_repeat_ngram_size=3 stop_after_sentences=0`
+  - balanced:`temperature=0.60 top_k=25 repetition_penalty=1.16 no_repeat_ngram_size=3 stop_after_sentences=0`
+  - creative:`temperature=0.70 top_k=30 repetition_penalty=1.12 no_repeat_ngram_size=3 stop_after_sentences=0`
+- `tests/test_evaluate_small_lm_generations.py` 新增 `coherence-v2` preset 回归测试,并扩展 unknown preset 错误消息断言
+- 跑三轮 MPS 评估并收敛:
+  - draft A:`runs/generation_eval_1780834629.md` → `58/60` EOS,`repeated_trigram=11`,失败,不采纳
+  - draft B:`runs/generation_eval_1780835035.md` → `58/60` EOS,`repeated_trigram=15`,失败,不采纳
+  - final:`runs/generation_eval_1780835469.md` → `60/60` EOS,作为 coherence-v2 记录
+- final `coherence-v2` vs `coherence-v1`:
+  - EOS:`60/60` → `60/60`
+  - avg words:`89.0` → `85.9`
+  - avg prompt overlap:`0.48` → `0.44`
+  - story endings:`31/60` → `33/60`
+  - weak_prompt_adherence:`25` → `29`
+  - character_drift:`9/60` → `8/60`
+  - repeated_trigram:`16` → `14`
+- `docs/model_cards/openmythos_tinystories_15m_step105000_seq384_clean_v61.md` 与 `docs/runbooks/tinystories_v61_seq384_recovery.md` 更新为推荐 `coherence-v2` 作为自然 EOS-bounded coherence preset
+- `.learnings/ERRORS.md` 记录 Hugging Face tokenizer 联网检查导致的 `RemoteProtocolError`,并记录本地评估使用 `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` 的规避方式
+
+### 📊 测试变化
+- before:`tests/test_evaluate_small_lm_generations.py` 红灯 2 failed,缺少 `coherence-v2` 分支和错误消息
+- after:`.venv-arm64/bin/python -m pytest tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py -q` → **33 passed**
+- `ruff check examples/evaluate_small_lm_generations.py examples/small_lm_eval_metrics.py examples/generate_small_lm.py examples/train_small_lm.py examples/resize_small_lm_context.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py` → **All checks passed**
+- 文件行数硬闸:`examples/evaluate_small_lm_generations.py` 398 行,`examples/small_lm_eval_metrics.py` 297 行
+- 沙盒外 MPS eval(final coherence-v2,offline tokenizer) → 成功写出 `runs/generation_eval_1780835469.md`
+
+### 🔑 关键决策 / 发现
+- `coherence-v2` 不简单提高 repetition penalty:过强惩罚会让 conservative/creative 各掉 1 个 EOS,破坏自然停止硬门槛
+- 最终 v2 采用混合策略:复用 `coherence-v1` 已稳定的 conservative/creative,只替换 independently `20/20` EOS 的 repetition-aware balanced preset
+- `coherence-v2` 是当前自然 coherence 评估推荐;`compact-v61` 仍是短 demo 推荐,因为它更短且 repeated trigram 最少
+- 本地 cached checkpoint 评估也可能触发 HF Hub 联网检查;需要离线环境变量避免 tokenizer 远端抖动
+
+### 🧭 留到下阶段
+- 可把报告中的 preset comparison 自动表格化,减少手工解析 markdown 报告
+- 可给 eval 脚本增加 tokenizer `local_files_only`/offline 选项,让 archived checkpoint 评估默认不碰网络
+
 ## 2026-06-07 · coherence-v1 preset 调参与评估
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)

@@ -82,6 +82,12 @@ COHERENCE_V1_PRESETS = [
     SamplingPreset("creative", 0.70, 30, 1.12, 3, 0),
 ]
 
+COHERENCE_V2_PRESETS = [
+    SamplingPreset("conservative", 0.58, 25, 1.10, 3, 0),
+    SamplingPreset("balanced", 0.60, 25, 1.16, 3, 0),
+    SamplingPreset("creative", 0.70, 30, 1.12, 3, 0),
+]
+
 
 def get_preset_set(name: str) -> list[SamplingPreset]:
     if name == "legacy":
@@ -90,8 +96,11 @@ def get_preset_set(name: str) -> list[SamplingPreset]:
         return COMPACT_V61_PRESETS
     if name == "coherence-v1":
         return COHERENCE_V1_PRESETS
+    if name == "coherence-v2":
+        return COHERENCE_V2_PRESETS
     raise ValueError(
-        "unknown preset set; expected one of: legacy, compact-v61, coherence-v1"
+        "unknown preset set; expected one of: "
+        "legacy, compact-v61, coherence-v1, coherence-v2"
     )
 
 
@@ -231,7 +240,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--preset-set",
         default="legacy",
-        choices=["legacy", "compact-v61", "coherence-v1"],
+        choices=["legacy", "compact-v61", "coherence-v1", "coherence-v2"],
         help="sampling preset set to evaluate",
     )
     parser.add_argument("--max-new-tokens", type=int, default=140)
