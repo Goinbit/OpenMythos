@@ -332,6 +332,15 @@ EOS gate while trimming repeated trigrams.
 | `coherence-v1` | 60/60 | 89.0 | 0.48 | 31/60 | 25 | 9/60 | 16 |
 | `coherence-v2` | 60/60 | 85.9 | 0.44 | 33/60 | 29 | 8/60 | 14 |
 
+Generate the raw comparison table from report files with:
+
+```bash
+python -m examples.compare_small_lm_eval_reports \
+  runs/generation_eval_1780832517.md \
+  runs/generation_eval_1780833963.md \
+  runs/generation_eval_1780835469.md
+```
+
 Interpretation: `coherence-v2` is the current best natural story-coherence
 preset. It keeps `60/60` EOS, improves endings and character drift versus
 `coherence-v1`, and lowers repeated-trigram flags from 16 to 14. It is not

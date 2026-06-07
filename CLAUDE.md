@@ -368,6 +368,32 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · small LM eval report 对比 CLI
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — small LM 评估工具补齐
+
+### ✅ 完成
+- `examples/compare_small_lm_eval_reports.py` 新增 markdown 报告对比 CLI,可解析 `examples.evaluate_small_lm_generations` 产出的报告并输出稳定 markdown 表格
+- 新工具自动提取 preset、EOS 命中、平均词数/句数、重复/过短/未闭合引号/budget/long flags、prompt overlap、story endings、character drift、missing/weak flags
+- `tests/test_compare_small_lm_eval_reports.py` 新增解析、表格渲染、非 eval 报告拒绝三类回归测试
+- `docs/model_cards/openmythos_tinystories_15m_step105000_seq384_clean_v61.md` 与 `docs/runbooks/tinystories_v61_seq384_recovery.md` 记录对比表生成命令
+
+### 📊 测试变化
+- before:`tests/test_compare_small_lm_eval_reports.py` 红灯 `ModuleNotFoundError: No module named 'examples.compare_small_lm_eval_reports'`
+- after:`.venv-arm64/bin/python -m pytest tests/test_compare_small_lm_eval_reports.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py -q` → **36 passed**
+- `ruff check examples/compare_small_lm_eval_reports.py examples/evaluate_small_lm_generations.py examples/small_lm_eval_metrics.py examples/generate_small_lm.py examples/train_small_lm.py examples/resize_small_lm_context.py tests/test_compare_small_lm_eval_reports.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py` → **All checks passed**
+- CLI smoke:`.venv-arm64/bin/python -m examples.compare_small_lm_eval_reports runs/generation_eval_1780832517.md runs/generation_eval_1780833963.md runs/generation_eval_1780835469.md` → 成功输出 compact/coherence-v1/coherence-v2 对比表
+
+### 🔑 关键决策 / 发现
+- 对比工具独立于生成脚本,只读报告文件,避免为了比较历史结果重新加载模型或 tokenizer
+- 缺失 flag 默认为 0,因此旧报告只要包含当前 summary 字段即可比较
+- 输出列顺序固定,方便直接复制进模型卡/runbook 或后续 diff
+
+### 🧭 留到下阶段
+- 可增加 `--glob runs/generation_eval_*.md` 或 `--latest N` 以减少手工列文件
+- 可增加 CSV 输出,便于长期趋势图或电子表格分析
+
 ## 2026-06-07 · coherence-v2 repetition-aware preset 验证
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交

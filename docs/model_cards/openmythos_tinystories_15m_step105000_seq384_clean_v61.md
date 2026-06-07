@@ -171,6 +171,15 @@ Preset comparison:
 | `coherence-v1` | 60 | 60/60 | 89.0 | 0.48 | 31/60 | 25 | 9/60 | 16 |
 | `coherence-v2` | 60 | 60/60 | 85.9 | 0.44 | 33/60 | 29 | 8/60 | 14 |
 
+Regenerate the comparison source table with:
+
+```bash
+python -m examples.compare_small_lm_eval_reports \
+  runs/generation_eval_1780832517.md \
+  runs/generation_eval_1780833963.md \
+  runs/generation_eval_1780835469.md
+```
+
 Use `compact-v61` for short demo outputs. Use `coherence-v2` for natural
 EOS-bounded coherence evaluation; it preserves the 60/60 EOS gate, improves
 story endings and character drift versus `coherence-v1`, and reduces repeated
