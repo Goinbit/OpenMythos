@@ -368,6 +368,55 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · TinyStories 100k clean-text checkpoint v6 归档
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — v6 本地模型归档
+
+### ✅ 完成
+- 用户完成 full v6 run:
+  - checkpoint:`checkpoints/tinystories_mps_small_mythos_seq256_clean_v6.pt`
+  - step:`100000`
+  - final train loss:`1.7424`
+  - val loss:`1.6520`
+  - late-run throughput:`~6.26k tok/s`
+- 复制并归档 v6 checkpoint:
+  - `checkpoints/openmythos_tinystories_15m_step100000_seq256_clean_v6.pt`
+  - 文件大小:`182M`
+  - SHA256:`153cc11b7e58e375750089f187b91a5594c8128fbcd4b3775d30a7b4257a2202`
+- 从 checkpoint metadata 确认:
+  - `step=100000`
+  - `append_eos=True`
+  - `eos_loss_weight=4.0`
+  - `clean_text=True`
+  - `max_seq_len=256`
+- 跑 v6 prompt-file 自然停止评估:
+  - `runs/generation_eval_1780810665.md`
+  - `samples=60`
+  - `eos_hit=True=58`
+  - `stop_reason=eos=58`
+  - `stop_reason=max_seq_len=2`
+- 跑单样本抽检:
+  - `Mia heard a bell in the forest`,balanced seed 408 → `eos_hit=True`,`generated_tokens=119`
+  - `Lily found a small door in the garden`,balanced seed 208 → `eos_hit=False`,`stop_reason=max_new_tokens`
+- 新增模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step100000_seq256_clean_v6.md`
+  - 记录 v6 与 v5 的取舍: v6 loss 更低,v5 自然停止更稳
+
+### 📊 测试变化
+- 沙盒外 MPS eval:`.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/tinystories_mps_small_mythos_seq256_clean_v6.pt --device mps --prompt-file eval_prompts/tinystories_natural_stop_20.txt --max-new-tokens 256 --stop-at-eos --out-dir runs` → 成功写出报告
+- 沙盒外 MPS generate smoke(Mia) → 成功,`stop_reason=eos`
+- 沙盒外 MPS generate smoke(Lily) → 成功,暴露 v6 对该 prompt 仍不能稳定自然停止
+
+### 🔑 关键决策 / 发现
+- v6 validation loss 明显优于 v5:`1.6520` vs `1.7513`
+- v6 自然停止略回退:`58/60` vs v5 `60/60`;两个失败都集中在 `Lily found a small door in the garden`
+- 结论: v6 可归档为最低 loss clean-text continuation,但不替代 v5 的最稳自然停止 baseline
+
+### 🧭 留到下阶段
+- 若目标是自然停止第一,以 v5 为基线;若目标是 loss/样本质量第一,以 v6 为基线
+- 下一步可做 v6.1:针对 Lily 类长尾失败调采样/训练,目标恢复 `60/60` 同时保留 v6 loss
+
 ## 2026-06-07 · v6 clean-text continuation runbook
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
