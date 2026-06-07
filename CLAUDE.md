@@ -368,6 +368,535 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · v5 prompt-file 自然停止评估 60 样本
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 自然停止评估工具强化
+
+### ✅ 完成
+- `examples/evaluate_small_lm_generations.py:42` 为 `GenerationResult` 增加 `preset_name`,让报告能按采样 preset 汇总
+- `examples/evaluate_small_lm_generations.py:66` 新增 `load_prompts(...)`,支持 `--prompt-file` 读取外部 prompt 列表,自动跳过空行和 `#` 注释
+- `examples/evaluate_small_lm_generations.py:80` 新增 `format_reason_counts(...)`
+- `examples/evaluate_small_lm_generations.py:87` 新增 `render_group_summary(...)`,报告输出 Prompt Summary 和 Preset Summary
+- `examples/evaluate_small_lm_generations.py:176` 新增 CLI `--prompt-file`
+- 新增外部评估集:
+  - `eval_prompts/tinystories_natural_stop_20.txt`
+  - 20 个 TinyStories 风格 prompt × 3 preset = 60 样本
+- `tests/test_evaluate_small_lm_generations.py:18` 新增 prompt-file 读取测试
+- `tests/test_evaluate_small_lm_generations.py:90` 新增 per-prompt/per-preset Summary 表测试
+- 更新 v5 模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.md`
+  - 将自然停止结论从 35/36 扩展为 59/60
+
+### 📊 测试变化
+- before:`tests/test_evaluate_small_lm_generations.py` 红灯 import error,缺少 `load_prompts`
+- after:`.venv-arm64/bin/python -m pytest tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py -q` → **15 passed**
+- `ruff check examples/train_small_lm.py examples/evaluate_small_lm_generations.py examples/generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py` → **All checks passed**
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt --device mps --prompt-file eval_prompts/tinystories_natural_stop_20.txt --max-new-tokens 240 --stop-at-eos --out-dir runs` → 成功
+- 60 样本评估报告:`runs/generation_eval_1780796779.md`
+- 60 样本统计:`samples=60` · `eos_hit=True=59` · `stop_reason=eos=59` · `stop_reason=max_new_tokens=1` · `stop_reason=max_seq_len=0`
+
+### 🔑 关键决策 / 发现
+- v5 在 60 样本 prompt-file 评估上达到 59/60 EOS,98.3% hit-rate,自然停止基线更可信
+- 唯一失败仍为 `Mia heard a bell in the forest` / balanced preset / seed 408,说明 failure mode 稳定可定位
+- Preset Summary 显示 conservative=20/20、creative=20/20、balanced=19/20;优先排查 balanced 档是否更容易拉长故事
+
+### 🧭 留到下阶段
+- 可增加 `--preset-file`,评估更多采样参数组合而不改源码
+- 可对唯一失败样本单独调低 temperature 或提高 repetition penalty 做 targeted decode 对比
+- 代码与文档已具备提交条件;下一步整理 commit,但不 push
+
+## 2026-06-06 · v5 自然停止扩展评估 36 样本
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 自然停止评估扩容
+
+### ✅ 完成
+- `examples/evaluate_small_lm_generations.py:14` 扩展 `DEFAULT_PROMPTS` 从 4 个到 12 个
+- 默认评估规模从 4 prompts × 3 presets = 12 样本,提升到 12 prompts × 3 presets = 36 样本
+- `tests/test_evaluate_small_lm_generations.py:8` 新增默认评估规模回归测试,要求默认样本数保持在 30-60 之间
+- 更新 v5 模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.md`
+  - 将自然停止结论从 12/12 小套件更新为 35/36 扩展套件
+- MPS 扩展评估写出:
+  - `runs/generation_eval_1780724137.md`
+  - Summary:`eos hit rate=35/36 (97.2%)`
+
+### 📊 测试变化
+- before:`tests/test_evaluate_small_lm_generations.py` 红灯 1 failed / 1 passed,默认 prompt 数仅 4
+- after:`.venv-arm64/bin/python -m pytest tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py -q` → **14 passed**
+- `ruff check examples/train_small_lm.py examples/evaluate_small_lm_generations.py examples/generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py` → **All checks passed**
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt --device mps --max-new-tokens 240 --stop-at-eos --out-dir runs` → 成功
+- 扩展评估统计:`samples=36` · `eos_hit=True=35` · `stop_reason=eos=35` · `stop_reason=max_new_tokens=1` · `stop_reason=max_seq_len=0`
+
+### 🔑 关键决策 / 发现
+- v5 的“真正自然停止”结论经 36 样本复验仍成立:35/36 EOS,97.2% hit-rate
+- 唯一失败样本是 `Mia heard a bell in the forest` / balanced preset / seed 408,跑满 240 token,说明自然停止不是完美 100%
+- 扩展后无 `max_seq_len` 停止,确认 seq256 解决了 128 上下文遮挡问题
+
+### 🧭 留到下阶段
+- 可增加 `--prompt-file` 支持外部 prompt 集,方便更大规模评估而不改源码
+- 可加入 per-prompt/per-preset 汇总表,定位哪些 prompt 或采样配置更容易不停止
+- 暂不建议盲训;优先完善评估面再决定 v6 训练方向
+
+## 2026-06-06 · TinyStories 90k seq256 EOS checkpoint v5 归档
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — seq256 自然停止基线达成
+
+### ✅ 完成
+- 复制并归档 90k seq256 weighted EOS checkpoint:
+  - `checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt`
+  - 来源:`checkpoints/tinystories_mps_small_mythos_seq256_eos_weighted.pt`
+  - 文件大小:`182M`
+  - SHA256:`588afb3f897c1770c11d32c7bde5d3cc386ace1896c1efa69678357203b153b7`
+- 从 checkpoint 元数据确认:
+  - step:`90000`
+  - train loss:`1.8821`
+  - `max_seq_len`:`256`
+  - `append_eos`:true
+  - `eos_loss_weight`:`4.0`
+  - tokenizer:`gpt2`
+- 新增模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.md`
+  - 记录 v1/v2/v3/v4/v5 对比、seq256 warm-start、推荐生成命令和自然停止评估
+- MPS 批量评估写出:
+  - `runs/generation_eval_1780721968.md` (`max-new-tokens=220`)
+  - `runs/generation_eval_1780722076.md` (`max-new-tokens=240`)
+  - 两次报告均为 12/12 `eos_hit=True` 且 12/12 `stop_reason=eos`
+
+### 📊 测试变化
+- 用户训练结果:step 90000 · final train loss `1.8821` · val loss `1.7513` · 后段吞吐约 `6.7k→6.8k tok/s`
+- `shasum -a 256 checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt` → `588afb3f897c1770c11d32c7bde5d3cc386ace1896c1efa69678357203b153b7`
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt --device mps --max-new-tokens 220 --stop-at-eos --out-dir runs` → `eos hit rate=12/12 (100.0%)`
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt --device mps --max-new-tokens 240 --stop-at-eos --out-dir runs` → `eos hit rate=12/12 (100.0%)`
+- 对比:v3 `stop_reason=eos=7/12`;v4 `stop_reason=eos=5/12`;v5 `stop_reason=eos=12/12`
+
+### 🔑 关键决策 / 发现
+- 目标“真正自然停止”在固定 12 prompt/preset 评估集上已达成:12/12 EOS,无 `max_seq_len` 或 `max_new_tokens` 停止
+- 128 上下文确实遮挡了 EOS 行为;seq256 + weighted EOS 同时提升了 validation loss 与自然停止率
+- v5 同时 supersede v3(EOS 行为)和 v4(validation loss),成为当前最佳 TinyStories 本机基线
+
+### 🧭 留到下阶段
+- 扩大自然停止评估:增加更多 prompts/seeds/presets,避免 12 样本过拟合结论
+- 可考虑把 `DEFAULT_PROMPTS` 扩展到 12-20 个,并在报告中按 prompt/preset 分组统计
+- 若继续训练,优先保留 v5,再另起 v6 实验,不要覆盖当前最佳自然停止 checkpoint
+
+## 2026-06-06 · small LM seq_len=256 warm-start 训练路径
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 长上下文训练实验准备
+
+### ✅ 完成
+- `examples/train_small_lm.py:32` 新增 `WeightLoadResult`,用于记录 warm-start 权重加载统计
+- `examples/train_small_lm.py:222` 新增 `validate_init_from_config(...)`,允许 `max_seq_len` 变化但拒绝 dim/vocab/架构等不兼容变化
+- `examples/train_small_lm.py:237` 新增 `load_matching_model_weights(...)`,按 key+shape 加载 checkpoint 权重,自动跳过 `freqs_cis` 等上下文长度相关 buffer
+- `examples/train_small_lm.py:296` 新增 CLI `--init-from`,用于从旧 checkpoint warm-start 模型权重但不加载 optimizer/scaler
+- `examples/train_small_lm.py:332` 保持 `--resume` 与 `--init-from` 互斥;`--resume` 仍是严格同 config 续训
+- `tests/test_train_small_lm.py:99` 新增 config 兼容性测试,确认只允许 `max_seq_len` 变化
+- `tests/test_train_small_lm.py:114` 新增 shape-matching loader 测试,确认 shape mismatch 和未知 key 被跳过
+
+### 📊 测试变化
+- before:`tests/test_train_small_lm.py` 红灯 2 failed / 5 passed,缺少 `validate_init_from_config` 与 `load_matching_model_weights`
+- after:`.venv-arm64/bin/python -m pytest tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py -q` → **13 passed**
+- `ruff check examples/train_small_lm.py examples/evaluate_small_lm_generations.py examples/generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py` → **All checks passed**
+- CPU smoke:`seq_len=256 --init-from checkpoints/openmythos_tinystories_15m_step85000_eos_weighted_v4.pt` → 成功保存 `/tmp/openmythos_seq256_init_smoke.pt`,确认 checkpoint config `max_seq_len=256`
+- MPS smoke:`seq_len=256 batch=8 steps=10 --init-from ...v4.pt` → 成功保存 `/tmp/openmythos_seq256_mps_smoke.pt`;输出 `loaded=66 skipped=freqs_cis`;step 85010 loss `2.4207`;吞吐约 `2.1k→2.35k tok/s`
+
+### 🔑 关键决策 / 发现
+- 128→256 不能用 `--resume`,因为 optimizer/scaler 和 `freqs_cis` 都绑定旧配置;应使用 `--init-from`
+- warm-start 只跳过 shape 不匹配项,当前实际跳过仅 `freqs_cis`,模型主体参数全部复用
+- `seq_len=256` 的 MPS 吞吐明显低于 128,但路径稳定可跑;长跑建议先用 `batch-size=8`
+
+### 🧭 留到下阶段
+- 启动正式 `seq_len=256` 长跑,建议从 v4 `--init-from` 训练 5k steps,输出 `checkpoints/tinystories_mps_small_mythos_seq256_eos_weighted.pt`
+- 训练完成后归档为 step90000/seq256 v5,再跑 `examples.evaluate_small_lm_generations --stop-at-eos`
+
+## 2026-06-06 · TinyStories 85k weighted EOS checkpoint v4 归档
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — weighted EOS 继续训练对照
+
+### ✅ 完成
+- 复制并归档 85k weighted EOS checkpoint:
+  - `checkpoints/openmythos_tinystories_15m_step85000_eos_weighted_v4.pt`
+  - 来源:`checkpoints/tinystories_mps_small_mythos_eos_weighted.pt`
+  - 文件大小:`182M`
+  - SHA256:`7e8890b27b9ee20ae7f577c600fcd0ac089727a0f4320b6a7d5e235fb91dc966`
+- 从 checkpoint 元数据确认:
+  - step:`85000`
+  - train loss:`1.8253`
+  - `append_eos`:true
+  - `eos_loss_weight`:`4.0`
+  - tokenizer:`gpt2`
+- 新增模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step85000_eos_weighted_v4.md`
+  - 记录 v4 是低 validation loss 对照,不是当前最佳自然停止 checkpoint
+- MPS 批量评估写出:
+  - `runs/generation_eval_1780719588.md`
+  - 报告已包含自动 Summary:`eos hit rate=5/12 (41.7%)`
+  - 12 个样本中 5 个 `eos_hit=True` 且 `stop_reason=eos`
+
+### 📊 测试变化
+- 用户训练结果:step 85000 · final train loss `1.8253` · val loss `1.8189` · 后段吞吐约 `7.0k→7.1k tok/s`
+- `shasum -a 256 checkpoints/openmythos_tinystories_15m_step85000_eos_weighted_v4.pt` → `7e8890b27b9ee20ae7f577c600fcd0ac089727a0f4320b6a7d5e235fb91dc966`
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step85000_eos_weighted_v4.pt --device mps --max-new-tokens 180 --stop-at-eos --out-dir runs` → 成功
+- `.venv-arm64/bin/python -m pytest tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py -q` → **11 passed**
+- `ruff check examples/train_small_lm.py examples/evaluate_small_lm_generations.py examples/generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py` → **All checks passed**
+- v3 对比:v3 `stop_reason=eos=7/12`;v4 `stop_reason=eos=5/12`
+- v4 评估统计:`samples=12` · `eos_hit=True=5` · `stop_reason=eos=5` · `stop_reason=max_seq_len=7` · `stop_reason=max_new_tokens=0`
+
+### 🔑 关键决策 / 发现
+- v4 validation loss `1.8189` 是目前最好,但自然停止率从 v3 的 7/12 回落到 5/12
+- “更会建模”不等于“更会收尾”;如果目标是自然停止,目前 v3 仍是更好的 baseline
+- 继续盲训 v4 不一定提高 EOS 停止率;下一步应做采样 preset 对比,或训练更大 `seq_len/max_seq_len` 版本
+- `examples.evaluate_small_lm_generations` 已新增 Summary 区,后续报告可直接读取 hit-rate,不再需要手工 `rg` 统计
+
+### 🧭 留到下阶段
+- 若目标是自然停止稳定性,优先增加不同采样 preset 对比
+- 若目标是更长故事自然停止,启动 `seq_len=256` 训练实验,减少 `max_seq_len=128` 对 EOS 评估的遮挡
+- 保留 v3/v4 双基线:v3 用于自然停止,v4 用于 validation loss 对照
+
+## 2026-06-06 · TinyStories 80k weighted EOS checkpoint v3 归档
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机 weighted EOS 自然停止验证
+
+### ✅ 完成
+- 复制并归档 80k weighted EOS checkpoint:
+  - `checkpoints/openmythos_tinystories_15m_step80000_eos_weighted_v3.pt`
+  - 来源:`checkpoints/tinystories_mps_small_mythos_eos_weighted.pt`
+  - 文件大小:`182M`
+  - SHA256:`83efd35dd108bc0550035ceecb5155f84eb83159dcf1a40f7d1514195ee6226f`
+- 从 checkpoint 元数据确认:
+  - step:`80000`
+  - train loss:`2.0096`
+  - `append_eos`:true
+  - `eos_loss_weight`:`4.0`
+  - tokenizer:`gpt2`
+- 新增模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step80000_eos_weighted_v3.md`
+  - 记录 v0/v1/v2/v3 对比、weighted EOS 训练配置、自然停止评估结果和推荐生成命令
+- MPS 批量评估写出:
+  - `runs/generation_eval_1780716355.md`
+  - 12 个样本中 7 个 `eos_hit=True` 且 `stop_reason=eos`
+- raw 无句子截断抽样验证:
+  - `Ben saw a tiny dragon under the bed` / seed 309 能在自然故事段落后停止
+  - `Lily found a small door in the garden` / seed 208 能在自然段落后停止
+
+### 📊 测试变化
+- 用户训练结果:step 80000 · final train loss `2.0096` · val loss `1.8320` · 后段吞吐约 `5.6k→5.7k tok/s`
+- `shasum -a 256 checkpoints/openmythos_tinystories_15m_step80000_eos_weighted_v3.pt` → `83efd35dd108bc0550035ceecb5155f84eb83159dcf1a40f7d1514195ee6226f`
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step80000_eos_weighted_v3.pt --device mps --max-new-tokens 180 --stop-at-eos --out-dir runs` → 成功
+- 评估统计:`samples=12` · `eos_hit=True=7` · `stop_reason=eos=7` · `stop_reason=max_seq_len=5` · `stop_reason=max_new_tokens=0`
+
+### 🔑 关键决策 / 发现
+- weighted EOS v3 是本轮第一个可观测到真实 `stop_reason=eos` 的 checkpoint,目标“真正自然停止”已经部分达成
+- 仍非完全可靠:5/12 样本撞到 `max_seq_len`,不是 EOS;这说明模型会停,但 stop 概率还不够稳
+- 当前 `max_seq_len=128` 会在 `--max-new-tokens=180` 前截断生成,后续若要更长自然故事,需要训练更大 `seq_len/max_seq_len`
+- 加权训练后 val loss `1.8320` 与 EOS v2 的 `1.8282` 很接近,说明 EOS 权重没有明显破坏语言建模
+
+### 🧭 留到下阶段
+- 若目标是“更稳定自然停止”,建议再从 v3 继续 weighted EOS 5k-10k steps,保持 `--eos-loss-weight 4.0`
+- 若要测试 `--eos-loss-weight 6.0`,需从未记录 `eos_loss_weight` 的 v2 另起实验,或先调整 resume guard
+- 若目标是“更长故事自然停止”,应训练 `seq_len=256` 版本,否则 `max_seq_len=128` 会继续成为上限
+- 可把评估脚本扩展为输出 EOS hit-rate 汇总表,避免人工 `rg` 统计
+
+## 2026-06-06 · EOS 自然停止训练权重与评估指标
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — small LM 自然停止能力推进
+
+### ✅ 完成
+- `examples/train_small_lm.py:164` 扩展 checkpoint metadata,新增 `eos_loss_weight`,保证 EOS 权重训练可追溯
+- `examples/train_small_lm.py:194` 新增 `build_loss_weights(...)`,仅对 EOS target 提高 cross-entropy 权重
+- `examples/train_small_lm.py:296` 禁止 `--no-append-eos` 与 `--eos-loss-weight != 1.0` 的无效组合,避免静默训练无 EOS 标签
+- `examples/train_small_lm.py:355` resume 时校验已有 checkpoint 的 `eos_loss_weight`,旧 checkpoint 无该字段时允许继续作为迁移起点
+- `examples/evaluate_small_lm_generations.py:34` 扩展 `GenerationResult`,新增 `eos_hit` / `generated_tokens` / `stop_reason`
+- `examples/evaluate_small_lm_generations.py:122` 新增 `summarize_generation_stop(...)`,批量报告可区分 `eos` / `max_new_tokens` / `max_seq_len`
+- `tests/test_train_small_lm.py:52` 新增 EOS loss 权重向量与 checkpoint metadata 回归测试
+- `tests/test_evaluate_small_lm_generations.py:4` 新增评估报告自然停止字段回归测试
+
+### 📊 测试变化
+- before: `tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py` → 红灯 4 failed / 2 passed
+- after: `.venv-arm64/bin/python -m pytest tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py -q` → **11 passed**
+- `ruff check examples/train_small_lm.py examples/evaluate_small_lm_generations.py examples/generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py` → **All checks passed**
+- CPU smoke:`.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step70000_eos_v2.pt --device cpu --max-new-tokens 5 --stop-at-eos --out-dir /tmp/openmythos_eos_metric_smoke` → 成功写出报告
+
+### 🔑 关键决策 / 发现
+- 70k EOS v2 已具备 EOS 标签和 `--stop-at-eos` 生成路径,但 smoke 显示短样本仍多为 `stop_reason=max_new_tokens`;下一步必须训练层面提高 EOS 权重,不能只调采样
+- eval loss 继续保持未加权 cross-entropy,便于和 40k/60k/70k checkpoint 横向比较
+- `eos_loss_weight` 默认 1.0,因此旧命令行为不变;从旧 checkpoint resume 到 weighted run 时,只有旧 checkpoint 已记录权重才强校验
+
+### 🧭 留到下阶段
+- 从 `checkpoints/openmythos_tinystories_15m_step70000_eos_v2.pt` 继续训练 weighted EOS v3,建议 `--eos-loss-weight 4.0` 跑 10k steps
+- weighted run 后用 `examples.evaluate_small_lm_generations --stop-at-eos` 统计 `eos_hit` 比例,目标是报告中出现真实 `stop_reason=eos`
+
+## 2026-06-06 · TinyStories 70k EOS checkpoint v2 归档
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — EOS 训练版本整理
+
+### ✅ 完成
+- 复制并归档 70k EOS checkpoint:
+  - `checkpoints/openmythos_tinystories_15m_step70000_eos_v2.pt`
+  - 来源:`checkpoints/tinystories_mps_small_mythos_eos.pt`
+  - 文件大小:`182M`
+  - SHA256:`dcf2390f580f475d6de1d5260bf12450baf57b1c3822df4046df92bba2436acd`
+- 新增模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step70000_eos_v2.md`
+  - 记录 EOS 数据、v0/v1/v2 loss 对比、推荐生成命令和 EOS 限制
+- 从 checkpoint 元数据确认:
+  - step:`70000`
+  - train loss:`2.0725`
+  - val loss:`1.8282`(来自训练日志)
+  - append_eos:`True`
+  - params:`15,856,162`
+
+### 📊 测试变化
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step70000_eos_v2.pt --device mps --max-new-tokens 140 --stop-at-eos` → 成功写出 `runs/generation_eval_1780689867.md`
+- `.venv-arm64/bin/python -m examples.generate_small_lm --checkpoint checkpoints/openmythos_tinystories_15m_step70000_eos_v2.pt --prompt "Once upon a time" --device mps --max-new-tokens 140 --temperature 0.6 --top-k 20 --repetition-penalty 1.18 --no-repeat-ngram-size 3 --stop-at-eos --stop-after-sentences 0` → 成功生成,但未稳定自然停止
+- `shasum -a 256 checkpoints/openmythos_tinystories_15m_step70000_eos_v2.pt` → `dcf2390f580f475d6de1d5260bf12450baf57b1c3822df4046df92bba2436acd`
+
+### 🔑 关键决策 / 发现
+- EOS v2 相比 v1 继续降低 val loss:1.8518 → 1.8282
+- 训练 token stream 已变更,EOS v2 的 train loss 不应直接与 v1 train loss 对比
+- 仅 10k EOS 追加训练还不足以让模型可靠自然输出 EOS;`--stop-after-sentences` 仍建议保留
+
+### 🧭 留到下阶段
+- 若目标是自然停止,继续 EOS 训练到 80k/90k 或提高 EOS 学习信号
+- 可新增专门的 EOS 评估指标:生成是否出现 EOS、出现位置、是否早于 max_new_tokens
+
+## 2026-06-06 · small LM 训练数据 EOS 追加
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 生成自然停止能力前置
+
+### ✅ 完成
+- `examples/train_small_lm.py`
+  - `PackedTextDataset` 支持 `eos_token_id` / `append_eos`
+  - 默认在每条文本样本后追加 tokenizer EOS token
+  - 新增 `--no-append-eos` 用于关闭 EOS 追加
+  - checkpoint 新增 `append_eos` metadata
+  - resume 时若新 checkpoint 已记录 `append_eos`,会校验当前设置一致
+- `examples/evaluate_small_lm_generations.py`
+  - 新增 `--stop-at-eos`
+  - 报告 settings 中记录 `stop_at_eos=True/False`
+- 新增 `tests/test_train_small_lm.py`
+  - 覆盖每条样本后追加 EOS
+  - 覆盖可关闭 EOS 追加
+- 更新 `tests/test_evaluate_small_lm_generations.py`
+  - 覆盖报告记录 `stop_at_eos`
+
+### 📊 测试变化
+- `.venv-arm64/bin/python -m pytest tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py -q` → **8 passed**
+- `ruff check examples/train_small_lm.py examples/evaluate_small_lm_generations.py examples/generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py` → **All checks passed**
+- 沙盒外 MPS train smoke:
+  - `.venv-arm64/bin/python -m examples.train_small_lm --dataset roneneldan/TinyStories --dataset-config "" --steps 1 --batch-size 2 --seq-len 32 --device mps --eval-every 0 --log-every 1 --save-every 1 --train-tokens 5000 --eval-tokens 1000 --out /tmp/openmythos_eos_smoke.pt`
+  - 成功保存 checkpoint,metadata `append_eos=True`
+- 沙盒外 MPS eval smoke:
+  - `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step60000_v1.pt --device mps --max-new-tokens 20 --stop-at-eos --out-dir /tmp/openmythos_eos_eval_smoke`
+  - 成功写出报告,settings 记录 `stop_at_eos=True`
+
+### 🔑 关键决策 / 发现
+- EOS 追加默认开启,因为下一阶段目标是训练会自然停止的 v2
+- 旧 checkpoint 无 `append_eos` metadata 时允许继续 resume,便于从 v1 迁移到 EOS 版训练
+- 已记录 `append_eos` 的新 checkpoint 会阻止设置不一致的 resume,避免无意混用数据语义
+
+### 🧭 留到下阶段
+- 从 `openmythos_tinystories_15m_step60000_v1.pt` resume,输出到新的 EOS checkpoint 文件,不要覆盖 v1
+- 训练到 70k/80k 后使用 `--stop-at-eos` 批量评估,观察自然停止是否优于句子截断
+
+## 2026-06-06 · TinyStories 60k checkpoint v1 归档
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机训练模型版本整理
+
+### ✅ 完成
+- 复制并归档 60k checkpoint:
+  - `checkpoints/openmythos_tinystories_15m_step60000_v1.pt`
+  - 来源:`checkpoints/tinystories_mps_small_mythos.pt`
+  - 文件大小:`182M`
+  - SHA256:`102772b5297c6d5a862928410d4b7175a131f23a3b14e54b23e17b5c01c323d7`
+- 新增模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step60000_v1.md`
+  - 记录 v1 与 v0 的 train/val loss 对比、推荐生成命令和样例输出
+- 从 checkpoint 元数据确认:
+  - step:`60000`
+  - train loss:`1.9917`
+  - params:`15,856,162`
+  - tokenizer:`gpt2`
+
+### 📊 测试变化
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step60000_v1.pt --device mps --max-new-tokens 140` → 成功写出 `runs/generation_eval_1780684492.md`
+- `shasum -a 256 checkpoints/openmythos_tinystories_15m_step60000_v1.pt` → `102772b5297c6d5a862928410d4b7175a131f23a3b14e54b23e17b5c01c323d7`
+- 训练结果记录:step 60000 final train loss `1.9917`, val loss `1.8518`
+
+### 🔑 关键决策 / 发现
+- v1 相比 v0 继续降低 val loss:1.8761 → 1.8518,但收益已经很小
+- 批量评估显示 v1 的 balanced samples 更稳,但仍有小模型常见的局部不连贯
+- 将 v1 作为最新 local TinyStories baseline;v0 保留用于回归比较
+
+### 🧭 留到下阶段
+- 若继续训练,下一版应命名为 `openmythos_tinystories_15m_step70000_v2.pt` 或更高 step,不要覆盖 v1
+- 更优先的下一项可能是训练数据追加 EOS 或扩大模型,而非继续无脑加步数
+
+## 2026-06-05 · TinyStories 40k checkpoint v0 归档
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机训练模型版本整理
+
+### ✅ 完成
+- 复制并归档 40k checkpoint:
+  - `checkpoints/openmythos_tinystories_15m_step40000_v0.pt`
+  - 来源:`checkpoints/tinystories_mps_small_mythos_step40000.pt`
+  - 文件大小:`182M`
+  - SHA256:`dec0974ab0a75f5db3b89248e9f5b7e135ab45124e32d44c1d1509a8bc3600c3`
+- 新增模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step40000_v0.md`
+  - 记录模型参数量、配置、训练数据、训练环境、loss、推荐生成命令和样例输出
+- 从 checkpoint 元数据确认:
+  - step:`40000`
+  - train loss:`2.0668`
+  - params:`15,856,162`
+  - tokenizer:`gpt2`
+
+### 📊 测试变化
+- `.venv-arm64/bin/python -m examples.generate_small_lm --checkpoint checkpoints/openmythos_tinystories_15m_step40000_v0.pt --prompt "Tom lost his red ball" --device mps --max-new-tokens 80 --temperature 0.55 --top-k 15 --repetition-penalty 1.22 --no-repeat-ngram-size 4 --stop-after-sentences 3` → 成功加载 step=40000 checkpoint 并生成
+- `shasum -a 256 checkpoints/openmythos_tinystories_15m_step40000_v0.pt` → `dec0974ab0a75f5db3b89248e9f5b7e135ab45124e32d44c1d1509a8bc3600c3`
+
+### 🔑 关键决策 / 发现
+- 40k checkpoint 作为第一个可保留的本机 OpenMythos TinyStories baseline
+- checkpoint 仍在 ignored `checkpoints/` 下,模型卡进入 `docs/` 便于长期追踪
+- 推荐默认生成参数采用 balanced preset:`temperature=0.6/top_k=20/repetition_penalty=1.18/no_repeat_ngram_size=3/stop_after_sentences=4`
+
+### 🧭 留到下阶段
+- 如果继续训练,新 checkpoint 需另存为 step50000 或更高版本,不要覆盖 v0
+- 可为模型卡补充 40k vs 50k 的批量评估对比表
+
+## 2026-06-05 · TinyStories MPS small LM 40k-step 训练结果
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机 MPS 小模型持续训练
+
+### ✅ 完成
+- 用户继续训练 TinyStories small LM checkpoint 到 step 40000
+  - checkpoint:`checkpoints/tinystories_mps_small_mythos.pt`
+  - device:`mps`
+  - step:40000
+  - final train loss:2.0668
+  - val loss:1.8761
+  - 后段吞吐约 6,284 → 6,188 tok/s
+- 当前 checkpoint 已超过 30k baseline,成为最新本机 MPS small LM 基线
+
+### 📊 测试变化
+- TinyStories checkpoint 从 30k 继续训练到 40k
+- val loss 从 30k 的 1.9065 降至 40k 的 1.8761
+- 长跑吞吐后段稳定在约 6.2k tok/s
+
+### 🔑 关键决策 / 发现
+- 30k→40k 仍有 validation loss 收益,但幅度明显小于 20k→30k
+- 当前阶段应优先备份 40k checkpoint 并跑批量生成评估,判断质量提升是否体感明显
+
+### 🧭 留到下阶段
+- 复制 `checkpoints/tinystories_mps_small_mythos.pt` 为 40k 标记文件
+- 用 `examples.evaluate_small_lm_generations` 生成 40k 报告,并与 30k 报告对比
+- 若继续训练,建议观察 50k val loss 是否进入平台期
+
+## 2026-06-05 · small LM 批量生成评估脚本
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — checkpoint 质量评估工具
+
+### ✅ 完成
+- 新增 `examples/evaluate_small_lm_generations.py`
+  - 加载 `examples.train_small_lm` 产出的 checkpoint
+  - 固定 4 个 TinyStories 风格 prompts
+  - 固定 3 组采样 preset(conservative / balanced / creative)
+  - 复用 `generate_small_lm.generate_tokens(...)` 与句子截断逻辑
+  - 输出 Markdown 报告到 `runs/generation_eval_<timestamp>.md`
+- 新增 `GenerationResult` / `SamplingPreset` 数据结构与 `render_report(...)`
+- `.gitignore` 增加 `runs/`,避免评估产物误入 git
+- 新增 `tests/test_evaluate_small_lm_generations.py`,覆盖 Markdown 报告渲染
+
+### 📊 测试变化
+- `.venv-arm64/bin/python -m pytest tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py -q` → **6 passed**
+- `ruff check examples/evaluate_small_lm_generations.py examples/generate_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py` → **All checks passed**
+- 沙盒外 MPS smoke:
+  - `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/tinystories_mps_small_mythos_step30000.pt --device mps --max-new-tokens 40 --out-dir /tmp/openmythos_generation_eval`
+  - 成功写出 Markdown 报告,包含 12 个样本
+
+### 🔑 关键决策 / 发现
+- 批量评估报告用 Markdown,便于人工扫读和保留 checkpoint 对比历史
+- 默认 prompts/presets 固定,方便后续 30k/40k/50k checkpoint 横向比较
+- smoke 使用 `/tmp` 输出,正式默认写 `runs/`
+
+### 🧭 留到下阶段
+- 如需更系统评估,可增加 `--prompt-file` 和 `--preset-file`
+- 可在报告中加入生成耗时/token 数和简单重复率指标
+
+## 2026-06-05 · small LM 生成句子截断参数
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 生成体验优化
+
+### ✅ 完成
+- `examples/generate_small_lm.py` 新增 `--stop-after-sentences`
+  - 新增 `trim_after_sentences(...)`,从 prompt 文本之后开始统计生成句子
+  - 支持按 `.` / `!` / `?` 截断,并保留紧随其后的引号/括号
+  - 参数默认 `0`,不影响未显式开启的旧命令
+- `tests/test_generate_small_lm.py` 新增句子截断测试
+  - 覆盖 prompt 已含句号时只统计 prompt 后的生成句子
+  - 覆盖句子数不足时保留原文
+
+### 📊 测试变化
+- `.venv-arm64/bin/python -m pytest tests/test_generate_small_lm.py -q` → **5 passed**
+- `ruff check examples/generate_small_lm.py tests/test_generate_small_lm.py` → **All checks passed**
+- 沙盒外 MPS 生成 smoke:
+  - `.venv-arm64/bin/python -m examples.generate_small_lm --checkpoint checkpoints/tinystories_mps_small_mythos_step30000.pt --prompt "Tom lost his red ball" --device mps --max-new-tokens 120 --temperature 0.55 --top-k 15 --repetition-penalty 1.22 --no-repeat-ngram-size 4 --stop-after-sentences 3`
+  - 成功输出 3 个生成句子后截断,避免另起新故事
+
+### 🔑 关键决策 / 发现
+- `--stop-after-sentences` 是 `examples.generate_small_lm` 的参数,必须附在完整 `python -m examples.generate_small_lm ...` 命令后,不能单独在 shell 中执行
+- 句子截断在 decode 后执行,不改变模型 token 采样过程,适合作为生成体验层修补
+
+### 🧭 留到下阶段
+- 可把同一参数同步到 `examples/generate_tiny_mythos.py`
+- 后续若需要更自然停止,训练阶段可显式追加 EOS token
+
+## 2026-06-05 · small LM 生成脚本重复控制优化
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 生成质量优化
+
+### ✅ 完成
+- 优化 `examples/generate_small_lm.py`
+  - 新增 `apply_repetition_penalty(...)`,对已出现 token 做 HuggingFace 风格重复惩罚
+  - 新增 `apply_no_repeat_ngram(...)`,支持禁止重复 n-gram continuation
+  - 新增 `generate_tokens(...)`,在示例脚本内复用 `StaticKVCache` 自定义采样循环
+  - 新增 CLI 参数:`--repetition-penalty` / `--no-repeat-ngram-size` / `--stop-at-eos`
+  - 默认生成参数调整为更适合 TinyStories small LM:`temperature=0.7` / `top_k=30` / `repetition_penalty=1.15` / `no_repeat_ngram_size=3`
+- 新增 `tests/test_generate_small_lm.py`
+  - 覆盖 repetition penalty 只改变已见 token
+  - 覆盖 no-repeat trigram 禁止已见 continuation
+  - 覆盖 no-repeat unigram 按 batch 禁止已见 token
+
+### 📊 测试变化
+- `.venv-arm64/bin/python -m pytest tests/test_generate_small_lm.py -q` → **3 passed**
+- `ruff check examples/generate_small_lm.py tests/test_generate_small_lm.py` → **All checks passed**
+- 沙盒外 MPS 生成 smoke:
+  - `.venv-arm64/bin/python -m examples.generate_small_lm --checkpoint checkpoints/tinystories_mps_small_mythos_step30000.pt --prompt "Tom lost his red ball" --device mps --max-new-tokens 80 --temperature 0.6 --top-k 20 --repetition-penalty 1.18 --no-repeat-ngram-size 3`
+  - 成功加载 step=30000 checkpoint 并生成
+
+### 🔑 关键决策 / 发现
+- 重复问题优先在 generation 层处理,不改模型架构和 checkpoint
+- repetition penalty 能减少 token 级复读;no-repeat n-gram 更适合抑制短语级重复
+- TinyStories checkpoint 仍可能在故事结束后另起一篇故事;这是缺少明确 EOS/停止信号的问题,后续可通过训练数据 EOS 或句子停止启发式继续优化
+
+### 🧭 留到下阶段
+- 如需进一步优化生成体验,可增加 `--stop-after-sentences` 或训练时显式追加 EOS token
+- 可新增批量评估脚本,固定多个 prompt 生成多样本并保存到 `runs/`
+
 ## 2026-04-24 · mypy 零错基线 + pre-commit + CI typecheck job
 
 **分支:** `main` · **commits:** `a33d1c6` `7623aec` + 本日志条目

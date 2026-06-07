@@ -1,5 +1,9 @@
 __pycache__/
 .venv/
+.venv-arm64/
+.codex/
+checkpoints/
+runs/
 
 .env
 
@@ -432,4 +436,3 @@ flycheck_*.el
 
 # network security
 /network-security.data
-
