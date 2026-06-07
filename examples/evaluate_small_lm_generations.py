@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +11,12 @@ import torch
 from transformers import AutoTokenizer
 
 from examples.generate_small_lm import generate_tokens, trim_after_sentences
+from examples.small_lm_eval_metrics import (
+    compute_coherence_metrics,
+    compute_quality_metrics,
+    render_coherence_summary,
+    render_quality_summary,
+)
 from examples.small_lm_text import clean_text_artifacts
 from open_mythos import MythosConfig, OpenMythos
 
@@ -59,17 +64,6 @@ class GenerationResult:
     clean_text: bool = True
 
 
-@dataclass(frozen=True)
-class QualityMetrics:
-    word_count: int
-    sentence_count: int
-    repeated_trigrams: int
-    repeated_fourgrams: int
-    has_unclosed_quote: bool
-    has_text_artifact: bool
-    flags: list[str]
-
-
 DEFAULT_PRESETS = [
     SamplingPreset("conservative", 0.55, 15, 1.22, 4, 3),
     SamplingPreset("balanced", 0.60, 20, 1.18, 3, 4),
@@ -103,54 +97,6 @@ def load_prompts(prompt_file: str) -> list[str]:
     if not prompts:
         raise ValueError(f"prompt file contains no prompts: {path}")
     return prompts
-
-
-def count_repeated_ngrams(words: list[str], n: int) -> int:
-    if len(words) < n:
-        return 0
-    counts: dict[tuple[str, ...], int] = {}
-    for idx in range(len(words) - n + 1):
-        key = tuple(words[idx : idx + n])
-        counts[key] = counts.get(key, 0) + 1
-    return sum(count - 1 for count in counts.values() if count > 1)
-
-
-def compute_quality_metrics(
-    text: str,
-    generated_tokens: int,
-    stop_reason: str,
-) -> QualityMetrics:
-    words = re.findall(r"[A-Za-z0-9']+", text.lower())
-    sentence_count = len(re.findall(r"[.!?]", text))
-    repeated_trigrams = count_repeated_ngrams(words, 3)
-    repeated_fourgrams = count_repeated_ngrams(words, 4)
-    has_unclosed_quote = text.count('"') % 2 == 1
-    has_text_artifact = "\u00e2" in text or "\ufffd" in text
-
-    flags = []
-    if stop_reason != "eos":
-        flags.append("budget_stop")
-    if has_text_artifact:
-        flags.append("mojibake")
-    if repeated_trigrams > 0:
-        flags.append("repeated_trigram")
-    if repeated_fourgrams > 0:
-        flags.append("repeated_fourgram")
-    if len(words) < 25:
-        flags.append("too_short")
-    if generated_tokens >= 256:
-        flags.append("long_generation")
-    if has_unclosed_quote:
-        flags.append("unclosed_quote")
-    return QualityMetrics(
-        word_count=len(words),
-        sentence_count=sentence_count,
-        repeated_trigrams=repeated_trigrams,
-        repeated_fourgrams=repeated_fourgrams,
-        has_unclosed_quote=has_unclosed_quote,
-        has_text_artifact=has_text_artifact,
-        flags=sorted(flags),
-    )
 
 
 def format_reason_counts(results: list[GenerationResult]) -> str:
@@ -189,37 +135,6 @@ def render_group_summary(
     return lines
 
 
-def render_quality_summary(results: list[GenerationResult]) -> list[str]:
-    metrics = [
-        compute_quality_metrics(result.text, result.generated_tokens, result.stop_reason)
-        for result in results
-    ]
-    total = len(metrics)
-    avg_words = sum(metric.word_count for metric in metrics) / max(1, total)
-    avg_sentences = sum(metric.sentence_count for metric in metrics) / max(1, total)
-    flag_counts: dict[str, int] = {}
-    for metric in metrics:
-        for flag in metric.flags:
-            flag_counts[flag] = flag_counts.get(flag, 0) + 1
-
-    lines = [
-        "## Quality Summary",
-        "",
-        f"- avg words: `{avg_words:.1f}`",
-        f"- avg sentences: `{avg_sentences:.1f}`",
-        "",
-        "| flag | count |",
-        "|---|---:|",
-    ]
-    if flag_counts:
-        for flag in sorted(flag_counts):
-            lines.append(f"| {flag} | {flag_counts[flag]} |")
-    else:
-        lines.append("| none | 0 |")
-    lines.append("")
-    return lines
-
-
 def render_report(
     checkpoint: str,
     step: int | None,
@@ -250,6 +165,7 @@ def render_report(
         "",
     ]
     lines.extend(render_quality_summary(results))
+    lines.extend(render_coherence_summary(results))
     lines.extend(render_group_summary("Prompt Summary", results, "prompt"))
     lines.extend(render_group_summary("Preset Summary", results, "preset_name"))
     for idx, result in enumerate(results, start=1):
@@ -259,6 +175,8 @@ def render_report(
             result.stop_reason,
         )
         quality_flags = ",".join(quality.flags) if quality.flags else "none"
+        coherence = compute_coherence_metrics(result.prompt, result.text)
+        coherence_flags = ",".join(coherence.flags) if coherence.flags else "none"
         lines.extend(
             [
                 f"## Sample {idx}",
@@ -281,6 +199,8 @@ def render_report(
                     f"quality_sentences={quality.sentence_count}, "
                     f"quality_repeated_trigrams={quality.repeated_trigrams}, "
                     f"quality_flags={quality_flags}, "
+                    f"coherence_prompt_overlap={coherence.prompt_overlap:.2f}, "
+                    f"coherence_flags={coherence_flags}, "
                     f"clean_text={result.clean_text}, "
                     f"seed={result.seed}"
                 ),

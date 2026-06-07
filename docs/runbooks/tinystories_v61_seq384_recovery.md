@@ -254,16 +254,19 @@ The compact preset changes only the conservative preset from
 `top_k=20, repetition_penalty=1.18, no_repeat_ngram_size=3`. The previously
 failing Lily conservative sample reaches EOS at `generated_tokens=105`.
 
-## Observed Quality Metrics
+## Observed Quality And Coherence Metrics
 
-The compact v6.1 evaluation with quality metrics was written to
-`runs/generation_eval_1780830019.md`:
+The compact v6.1 evaluation with quality and coherence metrics was written to
+`runs/generation_eval_1780832517.md`:
 
 - Samples: `60`
 - EOS hits: `60/60`
 - Stop reasons: `eos=60`
 - Average words: `35.8`
 - Average sentences: `3.3`
+- Average prompt overlap: `0.30`
+- Story endings: `17/60`
+- Character drift: `16/60`
 
 | Flag | Count |
 |---|---:|
@@ -271,7 +274,12 @@ The compact v6.1 evaluation with quality metrics was written to
 | `too_short` | 11 |
 | `unclosed_quote` | 2 |
 | `budget_stop` / `long_generation` / `mojibake` | 0 |
+| `missing_ending` | 43 |
+| `weak_prompt_adherence` | 45 |
+| `character_drift` | 16 |
 
 Interpretation: v6.1 + `compact-v61` has solved the natural-stop gate for this
 prompt set. The next useful work is story quality: reduce too-short/unfinished
 samples and improve local coherence without losing the `60/60` EOS behavior.
+The coherence metrics are lightweight heuristics, not a semantic judge; use
+them to compare local runs and spot regressions before reading samples manually.

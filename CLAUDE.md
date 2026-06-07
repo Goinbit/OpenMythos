@@ -368,6 +368,46 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · small LM story-coherence 启发式评估
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — small LM coherence 评估
+
+### ✅ 完成
+- `examples/small_lm_eval_metrics.py` 新增 lightweight quality/coherence metrics 模块,从评估入口拆出规则逻辑
+- `examples/evaluate_small_lm_generations.py` 保持 CLI 兼容,新增 `Coherence Summary` 与 per-sample `coherence_prompt_overlap` / `coherence_flags`
+- `examples/small_lm_eval_metrics.py` coherence 指标覆盖 prompt continuation overlap、story ending、character drift,并输出 `weak_prompt_adherence` / `missing_ending` / `character_drift`
+- `tests/test_evaluate_small_lm_generations.py` 新增 coherence 正/负样本测试,覆盖 prompt adherence、结尾识别、角色漂移和报告字段
+- 校准通用 prompt:`Once upon a time` 不再被误判为角色名 `Once`,也不再因通用开场词触发 weak adherence
+- 拆分后文件行数:
+  - `examples/evaluate_small_lm_generations.py`:379 行
+  - `examples/small_lm_eval_metrics.py`:297 行
+- 跑 v6.1 compact strict-256 完整 coherence 评估:
+  - `runs/generation_eval_1780832517.md`
+  - `samples=60`
+  - `eos_hit=True=60`
+  - `avg_prompt_overlap=0.30`
+  - `story_endings=17/60`
+  - `character_drift=16/60`
+  - flags:`missing_ending=43`, `weak_prompt_adherence=45`, `character_drift=16`
+- `docs/model_cards/openmythos_tinystories_15m_step105000_seq384_clean_v61.md` 与 `docs/runbooks/tinystories_v61_seq384_recovery.md` 记录最终 quality/coherence 摘要
+
+### 📊 测试变化
+- before:`tests/test_evaluate_small_lm_generations.py` 红灯 `ImportError: cannot import name 'compute_coherence_metrics'`
+- after:`.venv-arm64/bin/python -m pytest tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py -q` → **31 passed**
+- `ruff check examples/evaluate_small_lm_generations.py examples/small_lm_eval_metrics.py examples/generate_small_lm.py examples/train_small_lm.py examples/resize_small_lm_context.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py` → **All checks passed**
+- 沙盒外 MPS eval(compact-v61,strict 256) → 成功写出 `runs/generation_eval_1780832517.md`
+
+### 🔑 关键决策 / 发现
+- coherence 指标只看 prompt 之后的 continuation,避免原始 prompt 前缀虚高 prompt overlap
+- `Once upon a time` 属于通用开场,不应参与 prompt keyword/name drift 计算
+- 当前模型自然停止已经稳定,下一瓶颈明确转向 story ending、prompt adherence 和角色一致性
+- 这些指标是 deterministic heuristic,适合本地趋势跟踪,不是语义评审器或最终质量判官
+
+### 🧭 留到下阶段
+- 可基于 coherence flags 做 targeted preset 调参,目标是提高 story endings 与 prompt overlap,同时保持 `60/60` EOS
+- 若后续接入 LLM judge,应将当前 heuristic 作为快速 prefilter,不要替代人工样本阅读
+
 ## 2026-06-07 · small LM 生成质量指标评估
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)

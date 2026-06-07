@@ -114,8 +114,8 @@ Latest local reports:
 - `runs/generation_eval_1780815564.md` (`max-new-tokens=256`, strict comparison)
 - `runs/generation_eval_1780815803.md` (`max-new-tokens=376`, full seq384 budget)
 - `runs/generation_eval_1780828569.md` (`max-new-tokens=256`, `preset-set=compact-v61`)
-- `runs/generation_eval_1780830019.md` (`max-new-tokens=256`,
-  `preset-set=compact-v61`, with quality summary)
+- `runs/generation_eval_1780832517.md` (`max-new-tokens=256`,
+  `preset-set=compact-v61`, with quality and coherence summaries)
 
 Natural-stop summary:
 
@@ -126,7 +126,7 @@ Natural-stop summary:
 | 376 legacy | 60 | 60/60 | `eos=60` |
 | 256 compact-v61 | 60 | 60/60 | `eos=60` |
 
-Quality summary from `runs/generation_eval_1780830019.md`:
+Quality and coherence summary from `runs/generation_eval_1780832517.md`:
 
 | Metric | Value |
 |---|---:|
@@ -138,6 +138,12 @@ Quality summary from `runs/generation_eval_1780830019.md`:
 | `too_short` flags | 11 |
 | `unclosed_quote` flags | 2 |
 | `budget_stop` / `long_generation` / `mojibake` flags | 0 |
+| Average prompt overlap | 0.30 |
+| Story endings | 17/60 |
+| Character drift | 16/60 |
+| `missing_ending` flags | 43 |
+| `weak_prompt_adherence` flags | 45 |
+| `character_drift` flags | 16 |
 
 The remaining 256/300-token failure is the conservative Lily sample:
 
@@ -172,6 +178,9 @@ Representative long-tail sample:
 - Quality metrics show the next improvement target is short/unfinished story
   quality, not EOS: compact-v6.1 gets `60/60` EOS with no budget-stop or
   mojibake flags, but still has `too_short` and `unclosed_quote` cases.
+- Coherence metrics are lightweight heuristics, not a semantic judge. They are
+  useful for local trend tracking and currently highlight weak prompt adherence,
+  missing endings, and character drift as the main next frontier.
 - The model has no instruction tuning, preference tuning, safety tuning, or
   factual grounding.
 
