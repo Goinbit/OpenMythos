@@ -64,6 +64,20 @@ DEFAULT_PRESETS = [
     SamplingPreset("creative", 0.70, 30, 1.12, 3, 4),
 ]
 
+COMPACT_V61_PRESETS = [
+    SamplingPreset("conservative", 0.55, 20, 1.18, 3, 3),
+    SamplingPreset("balanced", 0.60, 20, 1.18, 3, 4),
+    SamplingPreset("creative", 0.70, 30, 1.12, 3, 4),
+]
+
+
+def get_preset_set(name: str) -> list[SamplingPreset]:
+    if name == "legacy":
+        return DEFAULT_PRESETS
+    if name == "compact-v61":
+        return COMPACT_V61_PRESETS
+    raise ValueError("unknown preset set; expected one of: legacy, compact-v61")
+
 
 def load_prompts(prompt_file: str) -> list[str]:
     if not prompt_file:
@@ -120,6 +134,7 @@ def render_report(
     step: int | None,
     loss: float | None,
     results: list[GenerationResult],
+    preset_set: str = "legacy",
 ) -> str:
     eos_hits = sum(1 for result in results if result.eos_hit)
     total = len(results)
@@ -134,6 +149,7 @@ def render_report(
         f"- checkpoint: `{checkpoint}`",
         f"- step: `{step}`",
         f"- loss: `{loss:.4f}`" if loss is not None else "- loss: `None`",
+        f"- preset set: `{preset_set}`",
         "",
         "## Summary",
         "",
@@ -180,6 +196,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--out-dir", default="runs")
     parser.add_argument("--prompt-file", default="")
+    parser.add_argument(
+        "--preset-set",
+        default="legacy",
+        choices=["legacy", "compact-v61"],
+        help="sampling preset set to evaluate",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=140)
     parser.add_argument("--n-loops", type=int, default=4)
     parser.add_argument("--stop-at-eos", action="store_true")
@@ -296,10 +318,11 @@ def main() -> None:
 
     ckpt, tokenizer, _cfg, model = load_model(checkpoint, device)
     prompts = load_prompts(args.prompt_file)
+    presets = get_preset_set(args.preset_set)
     clean_text = not args.no_clean_text
     results: list[GenerationResult] = []
     for prompt_idx, prompt in enumerate(prompts):
-        for preset_idx, preset in enumerate(DEFAULT_PRESETS):
+        for preset_idx, preset in enumerate(presets):
             seed = args.seed + prompt_idx * 100 + preset_idx
             results.append(
                 generate_one(
@@ -321,6 +344,7 @@ def main() -> None:
         step=ckpt.get("step"),
         loss=ckpt.get("loss"),
         results=results,
+        preset_set=args.preset_set,
     )
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

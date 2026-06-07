@@ -368,6 +368,42 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · v6.1 compact preset strict-256 恢复 60/60
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — v6.1 采样配置恢复
+
+### ✅ 完成
+- 诊断唯一长尾样本 `Lily found a small door in the garden` / conservative seed 207:
+  - legacy conservative `temperature=0.55 top_k=15 repetition_penalty=1.22 no_repeat_ngram_size=4` → strict 256 下不 EOS
+  - compact conservative `temperature=0.55 top_k=20 repetition_penalty=1.18 no_repeat_ngram_size=3` → `eos_hit=True generated_tokens=105`
+- `examples/evaluate_small_lm_generations.py` 新增 `--preset-set`:
+  - `legacy` 保持旧默认
+  - `compact-v61` 仅调整 conservative preset,balanced/creative 不变
+- `examples/evaluate_small_lm_generations.py` 报告 header 新增 `preset set: ...`
+- `tests/test_evaluate_small_lm_generations.py` 新增 preset-set 回归测试与 report metadata 测试
+- 跑 v6.1 compact strict-256 完整评估:
+  - `runs/generation_eval_1780828569.md`
+  - `samples=60`
+  - `eos_hit=True=60`
+  - `stop_reason=eos=60`
+- 更新 v6.1 模型卡和 v6.1 runbook,记录当前最佳 setup 为 v6.1 + `preset-set=compact-v61`
+
+### 📊 测试变化
+- before:`tests/test_evaluate_small_lm_generations.py` 红灯 `ImportError: cannot import name 'get_preset_set'`
+- after:`.venv-arm64/bin/python -m pytest tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py -q` → **28 passed**
+- `ruff check examples/evaluate_small_lm_generations.py examples/generate_small_lm.py examples/train_small_lm.py examples/resize_small_lm_context.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py` → **All checks passed**
+- 沙盒外 MPS eval(compact-v61,strict 256) → 成功写出 `runs/generation_eval_1780828569.md`,`60/60`
+
+### 🔑 关键决策 / 发现
+- 不需要继续训练 v6.2: v6.1 的 strict-256 长尾可通过采样 preset 修复
+- 问题不在模型不会 EOS,而是 legacy conservative preset 太保守/约束过强,导致 Lily seed 207 走入长尾
+- `compact-v61` 保留 conservative 名称但放宽 top-k、降低 repetition penalty、改回 3-gram 禁复,使输出更早收尾
+
+### 🧭 留到下阶段
+- 若继续提升,下一步应做“质量评测/故事一致性”而不是自然停止
+- 可将演示默认推荐切换到 v6.1 + `compact-v61` + strict `max-new-tokens=256`
+
 ## 2026-06-07 · TinyStories 105k seq384 checkpoint v6.1 归档
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)

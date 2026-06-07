@@ -5,10 +5,10 @@ Apple Silicon MPS. It warm-starts from the step 100000 seq256 clean v6
 checkpoint, expands context length to 384, and runs a short 5k-step continuation
 focused on recovering v6's natural-stop regression.
 
-v6.1 is the current best long-context TinyStories checkpoint in this local run:
-it keeps v6's lower validation-loss direction, improves strict 256-token EOS
-reliability from v6's 58/60 to 59/60, and reaches 60/60 EOS when evaluated with
-the full seq384 generation budget.
+v6.1 is the current best TinyStories checkpoint in this local run. It keeps
+v6's lower validation-loss direction, reaches 60/60 EOS with the full seq384
+generation budget, and also reaches 60/60 EOS under the strict 256-token budget
+when evaluated with the `compact-v61` preset set.
 
 ## Checkpoint
 
@@ -69,7 +69,8 @@ Comparison with recent baselines:
 |---|---:|---:|---:|---:|---:|---:|
 | Seq256 EOS weighted v5 | 90000 | 256 | 1.7513 | 60/60 | not measured | 60/60 @256 |
 | Seq256 clean v6 | 100000 | 256 | 1.6520 | 58/60 | not measured | 58/60 @256 |
-| Seq384 clean v6.1 | 105000 | 384 | 1.6227 | 59/60 | 59/60 | 60/60 @376 |
+| Seq384 clean v6.1 legacy | 105000 | 384 | 1.6227 | 59/60 | 59/60 | 60/60 @376 |
+| Seq384 clean v6.1 compact-v61 | 105000 | 384 | 1.6227 | 60/60 | not needed | 60/60 @256 |
 
 ## Recommended Generation
 
@@ -92,6 +93,19 @@ python -m examples.generate_small_lm \
 For polished demos, add `--stop-after-sentences 3` or `4`. For natural-stop
 measurement, keep `--stop-after-sentences 0`.
 
+Batch evaluation with the recommended compact preset set:
+
+```bash
+python -m examples.evaluate_small_lm_generations \
+  --checkpoint checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt \
+  --device mps \
+  --prompt-file eval_prompts/tinystories_natural_stop_20.txt \
+  --preset-set compact-v61 \
+  --max-new-tokens 256 \
+  --stop-at-eos \
+  --out-dir runs
+```
+
 ## Evaluation Snapshot
 
 Latest local reports:
@@ -99,14 +113,16 @@ Latest local reports:
 - `runs/generation_eval_1780815382.md` (`max-new-tokens=300`)
 - `runs/generation_eval_1780815564.md` (`max-new-tokens=256`, strict comparison)
 - `runs/generation_eval_1780815803.md` (`max-new-tokens=376`, full seq384 budget)
+- `runs/generation_eval_1780828569.md` (`max-new-tokens=256`, `preset-set=compact-v61`)
 
 Natural-stop summary:
 
 | Budget | Samples | EOS hits | Stop reasons |
 |---:|---:|---:|---|
-| 256 | 60 | 59/60 | `eos=59`, `max_new_tokens=1` |
-| 300 | 60 | 59/60 | `eos=59`, `max_new_tokens=1` |
-| 376 | 60 | 60/60 | `eos=60` |
+| 256 legacy | 60 | 59/60 | `eos=59`, `max_new_tokens=1` |
+| 300 legacy | 60 | 59/60 | `eos=59`, `max_new_tokens=1` |
+| 376 legacy | 60 | 60/60 | `eos=60` |
+| 256 compact-v61 | 60 | 60/60 | `eos=60` |
 
 The remaining 256/300-token failure is the conservative Lily sample:
 
@@ -116,6 +132,8 @@ The remaining 256/300-token failure is the conservative Lily sample:
 - At 256 tokens: `stop_reason=max_new_tokens`
 - At 300 tokens: `stop_reason=max_new_tokens`
 - At 376 tokens: `eos_hit=True`, `generated_tokens=364`, `stop_reason=eos`
+- With `preset-set=compact-v61`, the same sample reaches EOS at
+  `generated_tokens=105` under the strict 256-token budget.
 
 Representative sample:
 
@@ -131,8 +149,8 @@ Representative long-tail sample:
 
 - This is a toy-scale language model, not a general assistant model.
 - Outputs are strongest for TinyStories-style short children's stories.
-- v6.1 recovers 60/60 EOS only with the full seq384 generation budget; strict
-  256-token and 300-token evaluations remain 59/60.
+- v6.1 recovers 60/60 EOS under the strict 256-token budget when evaluated with
+  `preset-set=compact-v61`. The legacy preset set remains 59/60 at 256/300.
 - The long-tail Lily conservative sample requires 364 generated tokens to reach
   EOS, and long continuations can become semantically weak.
 - Some generated stories are still repetitive or logically inconsistent.
@@ -141,6 +159,7 @@ Representative long-tail sample:
 
 ## Status
 
-Use v6.1 when you want the lowest validation loss and the best long-context
-natural-stop recovery. Use v5 when you need the strongest strict 256-token EOS
-baseline. Use v6 only as the seq256 clean-text continuation reference point.
+Use v6.1 with `preset-set=compact-v61` as the current best local TinyStories
+checkpoint/setup. Use v5 only when comparing against the older strict 256-token
+legacy-preset baseline. Use v6 as the seq256 clean-text continuation reference
+point.

@@ -209,3 +209,31 @@ Evaluation results:
 The remaining strict-budget failure is still the conservative Lily sample
 (`seed=207`). It reaches EOS at `generated_tokens=364` when allowed the full
 seq384 generation budget.
+
+## Observed Compact Preset Recovery
+
+The remaining strict-budget failure was recovered without more training by using
+the `compact-v61` preset set:
+
+```bash
+python -m examples.evaluate_small_lm_generations \
+  --checkpoint checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt \
+  --device mps \
+  --prompt-file eval_prompts/tinystories_natural_stop_20.txt \
+  --preset-set compact-v61 \
+  --max-new-tokens 256 \
+  --stop-at-eos \
+  --out-dir runs
+```
+
+Result:
+
+- Report: `runs/generation_eval_1780828569.md`
+- Samples: `60`
+- EOS hits: `60/60`
+- Stop reasons: `eos=60`
+
+The compact preset changes only the conservative preset from
+`top_k=15, repetition_penalty=1.22, no_repeat_ngram_size=4` to
+`top_k=20, repetition_penalty=1.18, no_repeat_ngram_size=3`. The previously
+failing Lily conservative sample reaches EOS at `generated_tokens=105`.

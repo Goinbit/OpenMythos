@@ -2,6 +2,7 @@ from examples.evaluate_small_lm_generations import (
     DEFAULT_PRESETS,
     DEFAULT_PROMPTS,
     GenerationResult,
+    get_preset_set,
     load_prompts,
     render_report,
 )
@@ -13,6 +14,33 @@ def test_default_eval_suite_covers_30_to_60_samples():
     assert len(DEFAULT_PROMPTS) >= 10
     assert len(DEFAULT_PRESETS) == 3
     assert 30 <= sample_count <= 60
+
+
+def test_get_preset_set_keeps_legacy_defaults():
+    presets = get_preset_set("legacy")
+
+    assert presets == DEFAULT_PRESETS
+
+
+def test_get_preset_set_compact_v61_adjusts_conservative_preset():
+    presets = get_preset_set("compact-v61")
+
+    assert len(presets) == 3
+    conservative = presets[0]
+    assert conservative.name == "conservative"
+    assert conservative.temperature == 0.55
+    assert conservative.top_k == 20
+    assert conservative.repetition_penalty == 1.18
+    assert conservative.no_repeat_ngram_size == 3
+
+
+def test_get_preset_set_rejects_unknown_name():
+    try:
+        get_preset_set("missing")
+    except ValueError as exc:
+        assert "unknown preset set" in str(exc)
+    else:
+        raise AssertionError("expected unknown preset set to fail")
 
 
 def test_load_prompts_reads_non_empty_non_comment_lines(tmp_path):
@@ -77,12 +105,14 @@ def test_render_report_includes_checkpoint_metadata_and_samples():
         step=30000,
         loss=2.1267,
         results=results,
+        preset_set="compact-v61",
     )
 
     assert "# Small LM Generation Evaluation" in report
     assert "- checkpoint: `checkpoints/model.pt`" in report
     assert "- step: `30000`" in report
     assert "- loss: `2.1267`" in report
+    assert "- preset set: `compact-v61`" in report
     assert "## Summary" in report
     assert "- samples: `2`" in report
     assert "- eos hit rate: `1/2` (`50.0%`)" in report
