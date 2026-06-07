@@ -368,6 +368,42 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · small LM 生成质量指标评估
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — small LM 质量评估
+
+### ✅ 完成
+- `examples/evaluate_small_lm_generations.py` 新增 `QualityMetrics`,报告可统计 word/sentence 数、重复 trigram/fourgram、未闭合引号、mojibake 与停止预算相关 flags
+- `examples/evaluate_small_lm_generations.py` 新增 `Quality Summary`,批量报告顶部展示平均词数、平均句数和 flag 计数
+- `examples/evaluate_small_lm_generations.py` 每个 sample 的 settings 新增 `quality_words`, `quality_sentences`, `quality_repeated_trigrams`, `quality_flags`
+- `tests/test_evaluate_small_lm_generations.py` 新增质量指标单元测试,并覆盖报告中的 `Quality Summary` 与 per-sample quality metadata
+- `docs/model_cards/openmythos_tinystories_15m_step105000_seq384_clean_v61.md` 记录最新质量报告和 v6.1 质量摘要
+- `docs/runbooks/tinystories_v61_seq384_recovery.md` 增加 compact-v6.1 质量评估命令与质量门槛说明
+- 跑 v6.1 compact strict-256 完整质量评估:
+  - `runs/generation_eval_1780830019.md`
+  - `samples=60`
+  - `eos_hit=True=60`
+  - `stop_reason=eos=60`
+  - `avg_words=35.8`
+  - `avg_sentences=3.3`
+  - flags:`repeated_trigram=1`, `too_short=11`, `unclosed_quote=2`
+
+### 📊 测试变化
+- before:`tests/test_evaluate_small_lm_generations.py` 红灯 `1 failed / 6 passed`,失败点为质量 flags 期望未包含 `long_generation` 与 `repeated_fourgram`
+- after:`.venv-arm64/bin/python -m pytest tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py -q` → **29 passed**
+- `ruff check examples/evaluate_small_lm_generations.py examples/generate_small_lm.py examples/train_small_lm.py examples/resize_small_lm_context.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py` → **All checks passed**
+- 沙盒外 MPS eval(compact-v61,strict 256) → 成功写出 `runs/generation_eval_1780830019.md`
+
+### 🔑 关键决策 / 发现
+- v6.1 + `compact-v61` 已经通过自然停止门槛:60/60 EOS,且无 `budget_stop` / `long_generation` / `mojibake`
+- 当前下一质量瓶颈不是 EOS,而是 too-short/unfinished story、少量未闭合引号、极少量重复 trigram
+- 质量指标保持 lightweight heuristic,不引入模型评审器或外部依赖,适合本地快速迭代
+
+### 🧭 留到下阶段
+- 可新增 story-coherence 分数,例如 prompt adherence、角色一致性、结尾完整度
+- 可针对 `too_short` 样本微调采样 preset 或训练数据/损失,但必须保持 `60/60` EOS 不回退
+
 ## 2026-06-07 · v6.1 compact preset strict-256 恢复 60/60
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)

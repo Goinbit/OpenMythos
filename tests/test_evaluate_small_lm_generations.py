@@ -2,6 +2,7 @@ from examples.evaluate_small_lm_generations import (
     DEFAULT_PRESETS,
     DEFAULT_PROMPTS,
     GenerationResult,
+    compute_quality_metrics,
     get_preset_set,
     load_prompts,
     render_report,
@@ -66,6 +67,35 @@ def test_load_prompts_reads_non_empty_non_comment_lines(tmp_path):
     ]
 
 
+def test_compute_quality_metrics_flags_repetition_and_text_artifacts():
+    text = (
+        "Lily saw a red ball. "
+        "red ball rolled red ball rolled red ball rolled. "
+        "\"Oops, said Lily. \u00e2"
+    )
+
+    metrics = compute_quality_metrics(
+        text,
+        generated_tokens=256,
+        stop_reason="max_new_tokens",
+    )
+
+    assert metrics.word_count == 17
+    assert metrics.sentence_count == 3
+    assert metrics.repeated_trigrams >= 2
+    assert metrics.has_unclosed_quote is True
+    assert metrics.has_text_artifact is True
+    assert metrics.flags == [
+        "budget_stop",
+        "long_generation",
+        "mojibake",
+        "repeated_fourgram",
+        "repeated_trigram",
+        "too_short",
+        "unclosed_quote",
+    ]
+
+
 def test_render_report_includes_checkpoint_metadata_and_samples():
     results = [
         GenerationResult(
@@ -117,6 +147,11 @@ def test_render_report_includes_checkpoint_metadata_and_samples():
     assert "- samples: `2`" in report
     assert "- eos hit rate: `1/2` (`50.0%`)" in report
     assert "- stop reasons: `eos=1`, `max_seq_len=1`" in report
+    assert "## Quality Summary" in report
+    assert "- avg words:" in report
+    assert "- avg sentences:" in report
+    assert "| budget_stop | 1 |" in report
+    assert "| too_short | 2 |" in report
     assert "## Prompt Summary" in report
     assert "| Lily found a door | 0/1 | 0.0% | max_seq_len=1 |" in report
     assert "| Tom lost his red ball | 1/1 | 100.0% | eos=1 |" in report
@@ -130,4 +165,7 @@ def test_render_report_includes_checkpoint_metadata_and_samples():
     assert "eos_hit=True" in report
     assert "generated_tokens=42" in report
     assert "stop_reason=eos" in report
+    assert "quality_words=7" in report
+    assert "quality_sentences=2" in report
+    assert "quality_flags=too_short" in report
     assert "Tom lost his red ball. He found it." in report

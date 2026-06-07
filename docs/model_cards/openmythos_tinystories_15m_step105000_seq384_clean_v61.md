@@ -114,6 +114,8 @@ Latest local reports:
 - `runs/generation_eval_1780815564.md` (`max-new-tokens=256`, strict comparison)
 - `runs/generation_eval_1780815803.md` (`max-new-tokens=376`, full seq384 budget)
 - `runs/generation_eval_1780828569.md` (`max-new-tokens=256`, `preset-set=compact-v61`)
+- `runs/generation_eval_1780830019.md` (`max-new-tokens=256`,
+  `preset-set=compact-v61`, with quality summary)
 
 Natural-stop summary:
 
@@ -123,6 +125,19 @@ Natural-stop summary:
 | 300 legacy | 60 | 59/60 | `eos=59`, `max_new_tokens=1` |
 | 376 legacy | 60 | 60/60 | `eos=60` |
 | 256 compact-v61 | 60 | 60/60 | `eos=60` |
+
+Quality summary from `runs/generation_eval_1780830019.md`:
+
+| Metric | Value |
+|---|---:|
+| Samples | 60 |
+| EOS hits | 60/60 |
+| Average words | 35.8 |
+| Average sentences | 3.3 |
+| `repeated_trigram` flags | 1 |
+| `too_short` flags | 11 |
+| `unclosed_quote` flags | 2 |
+| `budget_stop` / `long_generation` / `mojibake` flags | 0 |
 
 The remaining 256/300-token failure is the conservative Lily sample:
 
@@ -154,6 +169,9 @@ Representative long-tail sample:
 - The long-tail Lily conservative sample requires 364 generated tokens to reach
   EOS, and long continuations can become semantically weak.
 - Some generated stories are still repetitive or logically inconsistent.
+- Quality metrics show the next improvement target is short/unfinished story
+  quality, not EOS: compact-v6.1 gets `60/60` EOS with no budget-stop or
+  mojibake flags, but still has `too_short` and `unclosed_quote` cases.
 - The model has no instruction tuning, preference tuning, safety tuning, or
   factual grounding.
 

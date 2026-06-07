@@ -164,12 +164,28 @@ python -m examples.evaluate_small_lm_generations \
   --out-dir runs
 ```
 
+Current recommended quality evaluation, using the compact v6.1 preset set:
+
+```bash
+python -m examples.evaluate_small_lm_generations \
+  --checkpoint checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt \
+  --device mps \
+  --prompt-file eval_prompts/tinystories_natural_stop_20.txt \
+  --preset-set compact-v61 \
+  --max-new-tokens 256 \
+  --stop-at-eos \
+  --out-dir runs
+```
+
 Interpretation:
 
 - Success: `60/60` EOS at `max-new-tokens=300`, validation loss still close to
   or better than v6.
 - Strong success: `60/60` EOS at `max-new-tokens=256`, meaning v6.1 pulled the
   long-tail Lily failures earlier rather than only expanding context.
+- Quality success: no `budget_stop`, `long_generation`, or `mojibake` flags in
+  the report's `Quality Summary`; track `too_short`, `unclosed_quote`, and
+  repetition flags as the next quality frontier.
 - If seq384 reaches `60/60` only at 300 tokens, archive it as a long-context
   recovery model, not a strict v5 replacement.
 
@@ -237,3 +253,25 @@ The compact preset changes only the conservative preset from
 `top_k=15, repetition_penalty=1.22, no_repeat_ngram_size=4` to
 `top_k=20, repetition_penalty=1.18, no_repeat_ngram_size=3`. The previously
 failing Lily conservative sample reaches EOS at `generated_tokens=105`.
+
+## Observed Quality Metrics
+
+The compact v6.1 evaluation with quality metrics was written to
+`runs/generation_eval_1780830019.md`:
+
+- Samples: `60`
+- EOS hits: `60/60`
+- Stop reasons: `eos=60`
+- Average words: `35.8`
+- Average sentences: `3.3`
+
+| Flag | Count |
+|---|---:|
+| `repeated_trigram` | 1 |
+| `too_short` | 11 |
+| `unclosed_quote` | 2 |
+| `budget_stop` / `long_generation` / `mojibake` | 0 |
+
+Interpretation: v6.1 + `compact-v61` has solved the natural-stop gate for this
+prompt set. The next useful work is story quality: reduce too-short/unfinished
+samples and improve local coherence without losing the `60/60` EOS behavior.
