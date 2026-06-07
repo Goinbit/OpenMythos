@@ -67,6 +67,10 @@ EOS behavior under 128-token context. Validation loss also improves sharply.
 
 ## Recommended Generation
 
+The current generation and evaluation scripts clean common TinyStories mojibake
+and spacing artifacts by default (`clean_text=True`). Use `--no-clean-text` only
+when comparing raw decoded output.
+
 Balanced natural-stop mode:
 
 ```bash
@@ -74,7 +78,7 @@ python -m examples.generate_small_lm \
   --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt \
   --prompt "Once upon a time" \
   --device mps \
-  --max-new-tokens 240 \
+  --max-new-tokens 256 \
   --temperature 0.6 \
   --top-k 20 \
   --repetition-penalty 1.18 \
@@ -90,7 +94,7 @@ python -m examples.generate_small_lm \
   --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt \
   --prompt "Tom lost his red ball" \
   --device mps \
-  --max-new-tokens 240 \
+  --max-new-tokens 256 \
   --temperature 0.55 \
   --top-k 15 \
   --repetition-penalty 1.22 \
@@ -105,7 +109,7 @@ Batch evaluation:
 python -m examples.evaluate_small_lm_generations \
   --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt \
   --device mps \
-  --max-new-tokens 240 \
+  --max-new-tokens 256 \
   --stop-at-eos
 ```
 
@@ -149,6 +153,14 @@ The previous 240-token-budget report had one non-EOS stop:
 Single-sample diagnosis with `--max-new-tokens 400` showed the same sample hits
 EOS at `generated_tokens=248`. With a 256-token budget, the 60-sample prompt
 file evaluation reaches 60/60 EOS stops.
+
+Postprocess smoke after text cleanup:
+
+- Prompt: `Mia heard a bell in the forest`
+- Seed: `408`
+- Result: `eos_hit=True`, `generated_tokens=248`, `stop_reason=eos`
+- Output no longer contains the earlier `â€œ` / `â€™` mojibake or `said,"`
+  spacing artifact.
 
 Representative sample:
 

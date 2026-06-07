@@ -26,6 +26,7 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
+from examples.small_lm_text import clean_text_artifacts
 from open_mythos import MythosConfig, OpenMythos
 
 
@@ -71,6 +72,7 @@ class PackedTextDataset(Dataset):
         text_field: str,
         eos_token_id: int | None,
         append_eos: bool,
+        clean_text: bool = True,
     ) -> None:
         if append_eos and eos_token_id is None:
             raise ValueError(
@@ -81,6 +83,8 @@ class PackedTextDataset(Dataset):
         for sample in hf_dataset:
             text = sample[text_field]
             if isinstance(text, str) and text.strip():
+                if clean_text:
+                    text = clean_text_artifacts(text)
                 ids = tokenizer.encode(text, add_special_tokens=False)
                 if append_eos and eos_token_id is not None:
                     ids.append(eos_token_id)
@@ -179,6 +183,7 @@ def save_checkpoint(
     loss: float,
     append_eos: bool,
     eos_loss_weight: float,
+    clean_text: bool = True,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -192,6 +197,7 @@ def save_checkpoint(
             "loss": loss,
             "append_eos": append_eos,
             "eos_loss_weight": eos_loss_weight,
+            "clean_text": clean_text,
         },
         path,
     )
@@ -312,6 +318,11 @@ def parse_args() -> argparse.Namespace:
         help="multiply cross-entropy loss for EOS targets; >1 encourages natural stops",
     )
     parser.add_argument(
+        "--no-clean-text",
+        action="store_true",
+        help="disable deterministic cleanup of mojibake punctuation before tokenizing",
+    )
+    parser.add_argument(
         "--amp",
         action="store_true",
         help="use CUDA autocast + GradScaler when training on cuda",
@@ -340,6 +351,7 @@ def main() -> None:
     vocab_size = len(tokenizer)
     cfg = build_config(vocab_size, args.seq_len)
     append_eos = not args.no_append_eos
+    clean_text = not args.no_clean_text
     if not append_eos and args.eos_loss_weight != 1.0:
         raise ValueError("--eos-loss-weight > 1 requires EOS labels; remove --no-append-eos")
     loss_weights = build_loss_weights(
@@ -352,7 +364,8 @@ def main() -> None:
     print(f"[setup] tokenizer={args.tokenizer} vocab_size={vocab_size:,}")
     print(
         f"[setup] dataset={args.dataset} config={args.dataset_config or 'none'} "
-        f"append_eos={append_eos} eos_loss_weight={args.eos_loss_weight}"
+        f"append_eos={append_eos} eos_loss_weight={args.eos_loss_weight} "
+        f"clean_text={clean_text}"
     )
     raw_train = load_text_dataset(args.dataset, args.dataset_config, args.train_split)
     raw_eval = load_text_dataset(args.dataset, args.dataset_config, args.eval_split)
@@ -364,6 +377,7 @@ def main() -> None:
         args.text_field,
         tokenizer.eos_token_id,
         append_eos,
+        clean_text=clean_text,
     )
     eval_ds = PackedTextDataset(
         raw_eval,
@@ -373,6 +387,7 @@ def main() -> None:
         args.text_field,
         tokenizer.eos_token_id,
         append_eos,
+        clean_text=clean_text,
     )
     print(
         f"[setup] train tokens={train_ds.data.numel():,} pairs={len(train_ds):,} | "
@@ -399,6 +414,8 @@ def main() -> None:
             raise ValueError("resume checkpoint config does not match current run")
         if "append_eos" in ckpt and bool(ckpt["append_eos"]) != append_eos:
             raise ValueError("resume checkpoint append_eos does not match current run")
+        if "clean_text" in ckpt and bool(ckpt["clean_text"]) != clean_text:
+            raise ValueError("resume checkpoint clean_text does not match current run")
         if (
             "eos_loss_weight" in ckpt
             and float(ckpt["eos_loss_weight"]) != args.eos_loss_weight
@@ -418,6 +435,8 @@ def main() -> None:
         validate_init_from_config(ckpt["config"], cfg)
         if "append_eos" in ckpt and bool(ckpt["append_eos"]) != append_eos:
             raise ValueError("init-from checkpoint append_eos does not match current run")
+        if "clean_text" in ckpt and bool(ckpt["clean_text"]) != clean_text:
+            raise ValueError("init-from checkpoint clean_text does not match current run")
         if (
             "eos_loss_weight" in ckpt
             and float(ckpt["eos_loss_weight"]) != args.eos_loss_weight
@@ -490,6 +509,7 @@ def main() -> None:
                 last_loss,
                 append_eos,
                 args.eos_loss_weight,
+                clean_text,
             )
             last_saved_step = step
 
@@ -505,6 +525,7 @@ def main() -> None:
             last_loss,
             append_eos,
             args.eos_loss_weight,
+            clean_text,
         )
 
 

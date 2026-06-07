@@ -8,13 +8,20 @@ from examples.train_small_lm import (
     save_checkpoint,
 )
 
+DIRTY_QUOTED_ALPHA = "\u00e2\u20ac\u0153alpha\u00e2\u20ac\u009d"
+
 
 class FakeTokenizer:
     eos_token_id = 99
 
     def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
         assert not add_special_tokens
-        return {"alpha": [1, 2], "beta": [3]}[text]
+        return {
+            "alpha": [1, 2],
+            "beta": [3],
+            '"alpha"': [4],
+            DIRTY_QUOTED_ALPHA: [5],
+        }[text]
 
 
 def test_packed_text_dataset_appends_eos_after_each_sample():
@@ -47,6 +54,40 @@ def test_packed_text_dataset_can_disable_eos_append():
     )
 
     assert ds.data.tolist() == [1, 2, 3]
+
+
+def test_packed_text_dataset_cleans_text_before_tokenizing():
+    samples = [{"text": DIRTY_QUOTED_ALPHA}]
+
+    ds = PackedTextDataset(
+        samples,
+        FakeTokenizer(),
+        seq_len=1,
+        max_tokens=10,
+        text_field="text",
+        eos_token_id=FakeTokenizer.eos_token_id,
+        append_eos=True,
+        clean_text=True,
+    )
+
+    assert ds.data.tolist() == [4, 99]
+
+
+def test_packed_text_dataset_can_disable_text_cleaning():
+    samples = [{"text": DIRTY_QUOTED_ALPHA}]
+
+    ds = PackedTextDataset(
+        samples,
+        FakeTokenizer(),
+        seq_len=1,
+        max_tokens=10,
+        text_field="text",
+        eos_token_id=FakeTokenizer.eos_token_id,
+        append_eos=True,
+        clean_text=False,
+    )
+
+    assert ds.data.tolist() == [5, 99]
 
 
 def test_build_loss_weights_emphasizes_only_eos_token():

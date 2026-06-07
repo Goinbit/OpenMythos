@@ -9,6 +9,7 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer
 
+from examples.small_lm_text import clean_text_artifacts
 from open_mythos import MythosConfig, OpenMythos, StaticKVCache
 
 SENTENCE_ENDINGS = {".", "!", "?"}
@@ -173,6 +174,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-repeat-ngram-size", type=int, default=3)
     parser.add_argument("--stop-at-eos", action="store_true")
     parser.add_argument(
+        "--no-clean-text",
+        action="store_true",
+        help="disable deterministic cleanup of mojibake punctuation in decoded text",
+    )
+    parser.add_argument(
         "--stop-after-sentences",
         type=int,
         default=0,
@@ -211,6 +217,9 @@ def main() -> None:
     prompt_ids = prompt_ids[-max(1, cfg.max_seq_len - 1):]
     input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
     prompt_text = tokenizer.decode(input_ids[0].tolist(), skip_special_tokens=True)
+    clean_text = not args.no_clean_text
+    if clean_text:
+        prompt_text = clean_text_artifacts(prompt_text)
 
     with torch.no_grad():
         out = generate_tokens(
@@ -227,6 +236,8 @@ def main() -> None:
         )
 
     text = tokenizer.decode(out[0].tolist(), skip_special_tokens=True)
+    if clean_text:
+        text = clean_text_artifacts(text)
     eos_hit, generated_tokens, stop_reason = summarize_generation_stop(
         out[0],
         prompt_len=input_ids.shape[1],
@@ -246,7 +257,8 @@ def main() -> None:
         f"temperature={args.temperature} top_k={args.top_k} "
         f"repetition_penalty={args.repetition_penalty} "
         f"no_repeat_ngram_size={args.no_repeat_ngram_size} "
-        f"stop_after_sentences={args.stop_after_sentences}"
+        f"stop_after_sentences={args.stop_after_sentences} "
+        f"clean_text={clean_text}"
     )
     print(
         "[stop] "

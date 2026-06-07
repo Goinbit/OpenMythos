@@ -368,6 +368,38 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · small LM 文本清理与生成输出净化
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机 small LM 生成质量工具链
+
+### ✅ 完成
+- 新增 `examples/small_lm_text.py`,提供 `clean_text_artifacts(...)` 统一清理 TinyStories 常见 mojibake、curly punctuation、spacing 残留
+- `examples/generate_small_lm.py` 默认在 decoded 输出后清理文本,新增 `--no-clean-text` 可关闭,并在 `[generate]` 行记录 `clean_text=True/False`
+- `examples/evaluate_small_lm_generations.py` 默认清理批量评估输出,报告 settings 新增 `clean_text=...`
+- `examples/train_small_lm.py` 默认在 tokenizer 前清理训练文本,checkpoint metadata 新增 `clean_text`,resume/init-from 时对已记录 metadata 的 checkpoint 做一致性校验
+- `tests/test_generate_small_lm.py` 新增 mojibake、double-encoded apostrophe、spacing artifact 回归
+- `tests/test_train_small_lm.py` 新增 `PackedTextDataset` 清理/关闭清理回归
+
+### 📊 测试变化
+- before:`tests/test_generate_small_lm.py` 红灯 `ModuleNotFoundError: No module named 'examples.small_lm_text'`
+- 中途红灯捕获真实烟测残留:`It wasn"€™t safe.` 与 `Mia said,"Let's go."  They ran.`
+- after:`.venv-arm64/bin/python -m pytest tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py -q` → **22 passed**
+- `ruff check examples/train_small_lm.py examples/generate_small_lm.py examples/evaluate_small_lm_generations.py examples/small_lm_text.py tests/test_train_small_lm.py tests/test_generate_small_lm.py tests/test_evaluate_small_lm_generations.py` → **All checks passed**
+- 沙盒外 MPS smoke:
+  - `.venv-arm64/bin/python -m examples.generate_small_lm --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt --prompt "Mia heard a bell in the forest" --device mps --max-new-tokens 400 --temperature 0.6 --top-k 20 --repetition-penalty 1.18 --no-repeat-ngram-size 3 --stop-at-eos --stop-after-sentences 0 --seed 408`
+  - 结果:`[stop] eos_hit=True generated_tokens=248 stop_reason=eos`
+  - 输出中 `â€œ` / `â€™` / `said,"` / double-space artifact 已清理
+
+### 🔑 关键决策 / 发现
+- 文本清理默认开启,因为它是 deterministic postprocess/data hygiene,不会改变模型权重或采样策略;如需对比原始输出可用 `--no-clean-text`
+- 单条生成、批量评估、未来训练数据三处共用同一 helper,避免 CLI 干净但 eval/report 或新训练仍脏
+- 旧 checkpoint 没有 `clean_text` metadata 时允许继续迁移;新 checkpoint 一旦记录该字段,后续 resume/init-from 会阻止静默混用清理语义
+
+### 🧭 留到下阶段
+- 若继续训练 v6,默认启用 clean_text,可从 v5 `--init-from` 迁移
+- 下一步质量提升应转向语义/叙事一致性,而不是继续修标点
+
 ## 2026-06-07 · v5 单样本停止诊断与 60/60 复评
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)

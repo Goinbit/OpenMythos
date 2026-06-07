@@ -11,6 +11,7 @@ import torch
 from transformers import AutoTokenizer
 
 from examples.generate_small_lm import generate_tokens, trim_after_sentences
+from examples.small_lm_text import clean_text_artifacts
 from open_mythos import MythosConfig, OpenMythos
 
 DEFAULT_PROMPTS = [
@@ -54,6 +55,7 @@ class GenerationResult:
     stop_reason: str
     seed: int
     preset_name: str = ""
+    clean_text: bool = True
 
 
 DEFAULT_PRESETS = [
@@ -161,6 +163,7 @@ def render_report(
                     f"eos_hit={result.eos_hit}, "
                     f"generated_tokens={result.generated_tokens}, "
                     f"stop_reason={result.stop_reason}, "
+                    f"clean_text={result.clean_text}, "
                     f"seed={result.seed}"
                 ),
                 "",
@@ -180,6 +183,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=140)
     parser.add_argument("--n-loops", type=int, default=4)
     parser.add_argument("--stop-at-eos", action="store_true")
+    parser.add_argument(
+        "--no-clean-text",
+        action="store_true",
+        help="disable deterministic cleanup of mojibake punctuation in decoded text",
+    )
     parser.add_argument("--seed", type=int, default=7)
     return parser.parse_args()
 
@@ -222,6 +230,7 @@ def generate_one(
     seed: int,
     device: torch.device,
     stop_at_eos: bool,
+    clean_text: bool,
 ) -> GenerationResult:
     torch.manual_seed(seed)
     prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
@@ -230,6 +239,8 @@ def generate_one(
     prompt_ids = prompt_ids[-max(1, model.cfg.max_seq_len - 1):]
     input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
     prompt_text = tokenizer.decode(input_ids[0].tolist(), skip_special_tokens=True)
+    if clean_text:
+        prompt_text = clean_text_artifacts(prompt_text)
 
     out = generate_tokens(
         model,
@@ -251,6 +262,8 @@ def generate_one(
         stop_at_eos=stop_at_eos,
     )
     text = tokenizer.decode(out[0].tolist(), skip_special_tokens=True)
+    if clean_text:
+        text = clean_text_artifacts(text)
     text = trim_after_sentences(
         text,
         sentence_count=preset.stop_after_sentences,
@@ -270,6 +283,7 @@ def generate_one(
         stop_reason=stop_reason,
         seed=seed,
         preset_name=preset.name,
+        clean_text=clean_text,
     )
 
 
@@ -282,6 +296,7 @@ def main() -> None:
 
     ckpt, tokenizer, _cfg, model = load_model(checkpoint, device)
     prompts = load_prompts(args.prompt_file)
+    clean_text = not args.no_clean_text
     results: list[GenerationResult] = []
     for prompt_idx, prompt in enumerate(prompts):
         for preset_idx, preset in enumerate(DEFAULT_PRESETS):
@@ -297,6 +312,7 @@ def main() -> None:
                     seed,
                     device,
                     args.stop_at_eos,
+                    clean_text,
                 )
             )
 

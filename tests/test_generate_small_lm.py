@@ -6,6 +6,35 @@ from examples.generate_small_lm import (
     summarize_generation_stop,
     trim_after_sentences,
 )
+from examples.small_lm_text import clean_text_artifacts
+
+
+def test_clean_text_artifacts_normalizes_mojibake_and_curly_punctuation():
+    dirty = (
+        "\u00e2\u20ac\u0153Hello\u00e2\u20ac\u009d "
+        "wasn\u00e2\u20ac\u2122t safe\u00e2\u20ac\u00a6 "
+        "\u201cReally?\u201d"
+    )
+
+    cleaned = clean_text_artifacts(dirty)
+
+    assert cleaned == "\"Hello\" wasn't safe... \"Really?\""
+
+
+def test_clean_text_artifacts_handles_double_encoded_apostrophe():
+    dirty = "It wasn\u00e2\u20ac\u20ac\u2122t safe."
+
+    cleaned = clean_text_artifacts(dirty)
+
+    assert cleaned == "It wasn't safe."
+
+
+def test_clean_text_artifacts_normalizes_spacing_artifacts():
+    dirty = "Mia said,\"Let's go.\"  They ran."
+
+    cleaned = clean_text_artifacts(dirty)
+
+    assert cleaned == "Mia said, \"Let's go.\" They ran."
 
 
 def test_apply_repetition_penalty_only_changes_seen_tokens():
