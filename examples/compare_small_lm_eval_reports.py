@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import glob
 import re
+from io import StringIO
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -142,6 +144,57 @@ def render_comparison_table(summaries: list[EvalReportSummary]) -> str:
     return "\n".join(lines)
 
 
+def render_comparison_csv(summaries: list[EvalReportSummary]) -> str:
+    out = StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(
+        [
+            "report",
+            "preset",
+            "samples",
+            "eos_hits",
+            "eos_total",
+            "stop_reasons",
+            "avg_words",
+            "avg_sentences",
+            "repeated_trigram",
+            "too_short",
+            "unclosed_quote",
+            "budget_stop",
+            "long_generation",
+            "avg_prompt_overlap",
+            "story_endings",
+            "character_drift",
+            "missing_ending",
+            "weak_prompt_adherence",
+        ]
+    )
+    for summary in summaries:
+        writer.writerow(
+            [
+                summary.path.name,
+                summary.preset_set,
+                summary.samples,
+                summary.eos_hits,
+                summary.eos_total,
+                summary.stop_reasons,
+                f"{summary.avg_words:.1f}",
+                f"{summary.avg_sentences:.1f}",
+                summary.flag_count("repeated_trigram"),
+                summary.flag_count("too_short"),
+                summary.flag_count("unclosed_quote"),
+                summary.flag_count("budget_stop"),
+                summary.flag_count("long_generation"),
+                f"{summary.avg_prompt_overlap:.2f}",
+                summary.story_endings,
+                summary.character_drift,
+                summary.flag_count("missing_ending"),
+                summary.flag_count("weak_prompt_adherence"),
+            ]
+        )
+    return out.getvalue().rstrip("\n")
+
+
 def _generation_eval_timestamp(path: Path) -> int:
     match = re.search(r"generation_eval_(\d+)\.md$", path.name)
     if match:
@@ -201,6 +254,7 @@ def parse_args() -> argparse.Namespace:
         help="select the N latest reports after combining positional and glob paths",
     )
     parser.add_argument("--out", default="", help="optional output Markdown file")
+    parser.add_argument("--csv", action="store_true", help="output CSV instead of Markdown")
     parser.add_argument(
         "--sort",
         choices=["input", "preset", "path"],
@@ -223,7 +277,11 @@ def main() -> None:
     elif args.sort == "path":
         summaries.sort(key=lambda summary: str(summary.path))
 
-    table = render_comparison_table(summaries)
+    table = (
+        render_comparison_csv(summaries)
+        if args.csv
+        else render_comparison_table(summaries)
+    )
     if args.out:
         Path(args.out).write_text(table + "\n", encoding="utf-8")
         print(f"[saved] {args.out}")

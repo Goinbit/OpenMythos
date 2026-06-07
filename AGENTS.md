@@ -368,6 +368,34 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · eval report compare CSV 输出
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — small LM 评估工具补齐
+
+### ✅ 完成
+- `examples/compare_small_lm_eval_reports.py` 新增 `--csv` 输出模式,默认 markdown 表格行为不变
+- `render_comparison_csv(...)` 输出适合 spreadsheet/趋势跟踪的稳定列:report、preset、samples、EOS、stop reasons、长度、质量 flags、coherence 指标
+- CSV 使用标准库 `csv.writer`,因此 `stop_reasons` 中包含逗号时会自动加引号
+- `tests/test_compare_small_lm_eval_reports.py` 新增 CSV header/row 回归测试,覆盖缺失 flag 自动填 0
+- `docs/model_cards/openmythos_tinystories_15m_step105000_seq384_clean_v61.md` 与 `docs/runbooks/tinystories_v61_seq384_recovery.md` 记录 `--csv --out runs/latest_eval_compare.csv` 用法
+
+### 📊 测试变化
+- before:`tests/test_compare_small_lm_eval_reports.py` 红灯 `ImportError: cannot import name 'render_comparison_csv'`
+- after:`.venv-arm64/bin/python -m pytest tests/test_compare_small_lm_eval_reports.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py -q` → **40 passed**
+- `ruff check examples/compare_small_lm_eval_reports.py examples/evaluate_small_lm_generations.py examples/small_lm_eval_metrics.py examples/generate_small_lm.py examples/train_small_lm.py examples/resize_small_lm_context.py tests/test_compare_small_lm_eval_reports.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py` → **All checks passed**
+- CLI smoke:`.venv-arm64/bin/python -m examples.compare_small_lm_eval_reports --glob 'runs/generation_eval_*.md' --latest 3 --csv --out /tmp/openmythos_eval_compare.csv` → 成功写出 CSV 并正确 quote `eos=58, max_new_tokens=2`
+- 文件行数:`examples/compare_small_lm_eval_reports.py` 293 行,`tests/test_compare_small_lm_eval_reports.py` 208 行
+
+### 🔑 关键决策 / 发现
+- 保持 `--csv` 为输出格式开关而不是另起脚本,复用同一套 report discovery / sort / out 流程
+- CSV 比 markdown 多保留 `samples`、`eos_hits`、`eos_total`、`stop_reasons` 独立列,便于后续画趋势图或做 gate
+- 输出到 stdout 和 `--out` 都支持 CSV,方便管道或落盘
+
+### 🧭 留到下阶段
+- 可增加 `--require-eos 60/60` 一类 gate,让脚本直接作为调参验收工具
+- 可增加更多排序键,如 `--sort eos` / `--sort repeated`,用于快速筛选最佳 preset
+
 ## 2026-06-07 · eval report compare latest/glob 自动发现
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交

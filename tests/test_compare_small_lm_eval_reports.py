@@ -2,6 +2,7 @@ from pathlib import Path
 
 from examples.compare_small_lm_eval_reports import (
     parse_eval_report,
+    render_comparison_csv,
     render_comparison_table,
     resolve_report_paths,
 )
@@ -124,6 +125,31 @@ def test_render_comparison_table_uses_stable_metric_columns(tmp_path):
         "| generation_eval_coherence.md | coherence-v2 | 60/60 | 85.9 | 8.8 | "
         "14 | 0 | 0 | 0 | 0 | 0.44 | 33/60 | 8/60 | 27 | 29 |"
     ) in table
+
+
+def test_render_comparison_csv_uses_analysis_friendly_columns(tmp_path):
+    compact_path = tmp_path / "generation_eval_compact.md"
+    coherence_path = tmp_path / "generation_eval_coherence.md"
+    compact_path.write_text(COMPACT_REPORT, encoding="utf-8")
+    coherence_path.write_text(COHERENCE_REPORT, encoding="utf-8")
+    summaries = [parse_eval_report(compact_path), parse_eval_report(coherence_path)]
+
+    csv_text = render_comparison_csv(summaries)
+
+    assert csv_text.splitlines()[0] == (
+        "report,preset,samples,eos_hits,eos_total,stop_reasons,avg_words,"
+        "avg_sentences,repeated_trigram,too_short,unclosed_quote,budget_stop,"
+        "long_generation,avg_prompt_overlap,story_endings,character_drift,"
+        "missing_ending,weak_prompt_adherence"
+    )
+    assert (
+        "generation_eval_compact.md,compact-v61,60,60,60,eos=60,35.8,3.3,"
+        "1,11,2,0,0,0.30,17/60,16/60,43,45"
+    ) in csv_text
+    assert (
+        "generation_eval_coherence.md,coherence-v2,60,60,60,eos=60,85.9,8.8,"
+        "14,0,0,0,0,0.44,33/60,8/60,27,29"
+    ) in csv_text
 
 
 def test_parse_eval_report_rejects_non_eval_report(tmp_path):

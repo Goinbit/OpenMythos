@@ -349,6 +349,16 @@ python -m examples.compare_small_lm_eval_reports \
   --latest 3
 ```
 
+For spreadsheet or long-term trend tracking, export CSV:
+
+```bash
+python -m examples.compare_small_lm_eval_reports \
+  --glob 'runs/generation_eval_*.md' \
+  --latest 3 \
+  --csv \
+  --out runs/latest_eval_compare.csv
+```
+
 Interpretation: `coherence-v2` is the current best natural story-coherence
 preset. It keeps `60/60` EOS, improves endings and character drift versus
 `coherence-v1`, and lowers repeated-trigram flags from 16 to 14. It is not

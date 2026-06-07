@@ -188,6 +188,16 @@ python -m examples.compare_small_lm_eval_reports \
   --latest 3
 ```
 
+Export the same comparison as CSV for spreadsheets or trend tracking:
+
+```bash
+python -m examples.compare_small_lm_eval_reports \
+  --glob 'runs/generation_eval_*.md' \
+  --latest 3 \
+  --csv \
+  --out runs/latest_eval_compare.csv
+```
+
 Use `compact-v61` for short demo outputs. Use `coherence-v2` for natural
 EOS-bounded coherence evaluation; it preserves the 60/60 EOS gate, improves
 story endings and character drift versus `coherence-v1`, and reduces repeated
