@@ -368,6 +368,42 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · v6.1 seq384 自然停止诊断工具与 runbook
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — v6.1 训练前诊断
+
+### ✅ 完成
+- 新增 `examples/resize_small_lm_context.py`,支持将 small LM checkpoint 的 `max_seq_len` 扩大并重建不匹配的 RoPE `freqs_cis`
+- 新增 `tests/test_resize_small_lm_context.py`,覆盖:
+  - checkpoint context 扩展后保留 step / EOS / clean_text metadata
+  - 非扩展 resize 被拒绝
+  - `build_resized_config(...)` 只改变 `max_seq_len`
+- 创建临时 seq384 probe:
+  - source:`checkpoints/openmythos_tinystories_15m_step100000_seq256_clean_v6.pt`
+  - out:`/tmp/openmythos_tinystories_v6_seq384_probe.pt`
+  - result:`max_seq_len=256->384 loaded=66 skipped=freqs_cis`
+- 用 seq384 probe 复查 v6 两个 Lily 失败样本:
+  - conservative seed 207:`eos_hit=True generated_tokens=269 stop_reason=eos`
+  - balanced seed 208:`eos_hit=True generated_tokens=300 stop_reason=eos`
+- 新增 `docs/runbooks/tinystories_v61_seq384_recovery.md`,固化 v6.1 seq384 smoke/full train/eval/archive 流程
+- 更新 v6 模型卡,补充 seq384 probe 诊断和 v6.1 方向
+
+### 📊 测试变化
+- before:`tests/test_resize_small_lm_context.py` 红灯 `ModuleNotFoundError: No module named 'examples.resize_small_lm_context'`
+- after:`.venv-arm64/bin/python -m pytest tests/test_resize_small_lm_context.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py -q` → **25 passed**
+- `ruff check examples/resize_small_lm_context.py examples/train_small_lm.py examples/generate_small_lm.py examples/evaluate_small_lm_generations.py tests/test_resize_small_lm_context.py tests/test_train_small_lm.py tests/test_generate_small_lm.py tests/test_evaluate_small_lm_generations.py` → **All checks passed**
+- 沙盒外 MPS generate smoke(seq384 probe,Lily conservative/balanced) → 两条均采到 EOS
+
+### 🔑 关键决策 / 发现
+- v6 的 `58/60` 自然停止回退主要是上下文/预算问题:两个失败都在 seq256 可生成上限 `248` token 撞墙
+- 仅扩到 seq384 就能让两条失败采到 EOS,但 balanced 到第 300 token 才停且后段语义变弱
+- v6.1 方向:从 v6 `--init-from` 到 `seq_len=384`,短续训 5k steps,目标 `max-new-tokens=300` 下恢复 `60/60`;若 256 token 严格评估也恢复则视为强成功
+
+### 🧭 留到下阶段
+- 用户可先跑 v6.1 smoke train:`docs/runbooks/tinystories_v61_seq384_recovery.md`
+- 跑完 v6.1 后同时评估 `max-new-tokens=300` 和严格 `256`,再决定是否归档为 v6.1
+
 ## 2026-06-07 · TinyStories 100k clean-text checkpoint v6 归档
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)

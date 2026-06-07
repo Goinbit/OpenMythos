@@ -135,6 +135,20 @@ The two failures were concentrated in one prompt:
 - Balanced preset: `seed=208`, `generated_tokens=248`, `stop_reason=max_seq_len`
 - Creative preset for the same prompt did stop naturally: `eos_hit=True`
 
+Follow-up context-resize probe:
+
+- Tool: `examples.resize_small_lm_context`
+- Probe checkpoint: `/tmp/openmythos_tinystories_v6_seq384_probe.pt`
+- Resize: `max_seq_len=256 -> 384`
+- Loaded weights: `66`
+- Skipped weights: `freqs_cis` only, expected because RoPE frequencies are rebuilt
+- Conservative Lily failure reached EOS at `generated_tokens=269`
+- Balanced Lily failure reached EOS at `generated_tokens=300`
+- Interpretation: the v6 natural-stop regression is primarily a context/budget
+  issue, but the long Lily continuations become semantically weak near the end.
+  v6.1 should use seq384 continuation training rather than only repackaging the
+  checkpoint.
+
 Preset summary:
 
 | Preset | EOS stops |
