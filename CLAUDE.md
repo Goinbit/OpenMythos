@@ -368,6 +368,46 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · v5 单样本停止诊断与 60/60 复评
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 唯一失败样本诊断
+
+### ✅ 完成
+- `examples/generate_small_lm.py:78` 新增 `summarize_generation_stop(...)`
+- `examples/generate_small_lm.py:225` 单样本 CLI 输出新增 `[stop] eos_hit=... generated_tokens=... stop_reason=...`
+- `tests/test_generate_small_lm.py:61` 新增 EOS stop summary 测试
+- `tests/test_generate_small_lm.py:77` 新增 `max_seq_len` stop summary 测试
+- 对唯一失败样本单独复跑:
+  - prompt:`Mia heard a bell in the forest`
+  - preset:balanced (`temperature=0.6`, `top_k=20`, `repetition_penalty=1.18`, `no_repeat_ngram_size=3`)
+  - seed:`408`
+  - `max-new-tokens=400`
+  - 结果:`[stop] eos_hit=True generated_tokens=248 stop_reason=eos`
+- 60 样本 prompt-file 复评:
+  - `runs/generation_eval_1780797531.md`
+  - `--max-new-tokens 256`
+  - 结果:`eos hit rate=60/60 (100.0%)`
+- 更新 v5 模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.md`
+  - 记录 240 token 预算失败是预算不足,256 token 预算下 60/60 EOS
+
+### 📊 测试变化
+- before:`tests/test_generate_small_lm.py` 红灯 import error,缺少 `summarize_generation_stop`
+- after:`.venv-arm64/bin/python -m pytest tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py -q` → **17 passed**
+- `ruff check examples/train_small_lm.py examples/evaluate_small_lm_generations.py examples/generate_small_lm.py tests/test_train_small_lm.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py` → **All checks passed**
+- `.venv-arm64/bin/python -m examples.evaluate_small_lm_generations --checkpoint checkpoints/openmythos_tinystories_15m_step90000_seq256_eos_weighted_v5.pt --device mps --prompt-file eval_prompts/tinystories_natural_stop_20.txt --max-new-tokens 256 --stop-at-eos --out-dir runs` → 成功
+- 复评统计:`samples=60` · `eos_hit=True=60` · `stop_reason=eos=60` · `stop_reason=max_new_tokens=0` · `stop_reason=max_seq_len=0`
+
+### 🔑 关键决策 / 发现
+- 唯一失败样本并非模型不会自然停止,而是 240 token 预算不足;该样本在 248 generated tokens 采到 EOS
+- v5 在 20 prompt × 3 preset 的 prompt-file 评估上,以 256 token 预算达到 60/60 EOS
+- 单样本 `generate_small_lm` 现在会打印停止原因,后续不再需要靠肉眼推断
+
+### 🧭 留到下阶段
+- 可将推荐评估预算统一改为 `--max-new-tokens 256`
+- 可提交当前补丁,但仍不 push
+
 ## 2026-06-07 · v5 prompt-file 自然停止评估 60 样本
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)

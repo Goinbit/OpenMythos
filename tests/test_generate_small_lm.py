@@ -3,6 +3,7 @@ import torch
 from examples.generate_small_lm import (
     apply_no_repeat_ngram,
     apply_repetition_penalty,
+    summarize_generation_stop,
     trim_after_sentences,
 )
 
@@ -57,3 +58,33 @@ def test_trim_after_sentences_keeps_text_without_enough_sentences():
     text = "Prompt. One generated sentence."
 
     assert trim_after_sentences(text, sentence_count=3, start_offset=8) == text
+
+
+def test_summarize_generation_stop_detects_eos():
+    output_ids = torch.tensor([10, 11, 12, 99, 13])
+
+    summary = summarize_generation_stop(
+        output_ids,
+        prompt_len=2,
+        max_new_tokens=20,
+        max_seq_len=64,
+        eos_token_id=99,
+        stop_at_eos=True,
+    )
+
+    assert summary == (True, 3, "eos")
+
+
+def test_summarize_generation_stop_reports_max_seq_len_before_budget():
+    output_ids = torch.full((256,), 1)
+
+    summary = summarize_generation_stop(
+        output_ids,
+        prompt_len=8,
+        max_new_tokens=400,
+        max_seq_len=256,
+        eos_token_id=99,
+        stop_at_eos=True,
+    )
+
+    assert summary == (False, 248, "max_seq_len")

@@ -89,6 +89,25 @@ def trim_after_sentences(
     return text
 
 
+def summarize_generation_stop(
+    output_ids: torch.Tensor,
+    prompt_len: int,
+    max_new_tokens: int,
+    max_seq_len: int,
+    eos_token_id: int | None,
+    stop_at_eos: bool,
+) -> tuple[bool, int, str]:
+    generated = output_ids[prompt_len:].tolist()
+    generated_tokens = len(generated)
+    if eos_token_id is not None and eos_token_id in generated:
+        return True, generated_tokens, "eos" if stop_at_eos else "eos_seen"
+    if generated_tokens >= max_new_tokens:
+        return False, generated_tokens, "max_new_tokens"
+    if output_ids.numel() >= max_seq_len:
+        return False, generated_tokens, "max_seq_len"
+    return False, generated_tokens, "stopped"
+
+
 @torch.no_grad()
 def generate_tokens(
     model: OpenMythos,
@@ -208,6 +227,14 @@ def main() -> None:
         )
 
     text = tokenizer.decode(out[0].tolist(), skip_special_tokens=True)
+    eos_hit, generated_tokens, stop_reason = summarize_generation_stop(
+        out[0],
+        prompt_len=input_ids.shape[1],
+        max_new_tokens=args.max_new_tokens,
+        max_seq_len=cfg.max_seq_len,
+        eos_token_id=tokenizer.eos_token_id,
+        stop_at_eos=args.stop_at_eos,
+    )
     text = trim_after_sentences(
         text,
         sentence_count=args.stop_after_sentences,
@@ -220,6 +247,11 @@ def main() -> None:
         f"repetition_penalty={args.repetition_penalty} "
         f"no_repeat_ngram_size={args.no_repeat_ngram_size} "
         f"stop_after_sentences={args.stop_after_sentences}"
+    )
+    print(
+        "[stop] "
+        f"eos_hit={eos_hit} generated_tokens={generated_tokens} "
+        f"stop_reason={stop_reason}"
     )
     print(text)
 
