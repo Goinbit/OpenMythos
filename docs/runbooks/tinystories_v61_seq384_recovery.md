@@ -177,6 +177,19 @@ python -m examples.evaluate_small_lm_generations \
   --out-dir runs
 ```
 
+Natural story-coherence evaluation, using the EOS-bounded coherence preset:
+
+```bash
+python -m examples.evaluate_small_lm_generations \
+  --checkpoint checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt \
+  --device mps \
+  --prompt-file eval_prompts/tinystories_natural_stop_20.txt \
+  --preset-set coherence-v1 \
+  --max-new-tokens 256 \
+  --stop-at-eos \
+  --out-dir runs
+```
+
 Interpretation:
 
 - Success: `60/60` EOS at `max-new-tokens=300`, validation loss still close to
@@ -186,6 +199,8 @@ Interpretation:
 - Quality success: no `budget_stop`, `long_generation`, or `mojibake` flags in
   the report's `Quality Summary`; track `too_short`, `unclosed_quote`, and
   repetition flags as the next quality frontier.
+- Coherence success: keep `60/60` EOS while improving prompt overlap, story
+  endings, and character drift versus `compact-v61`.
 - If seq384 reaches `60/60` only at 300 tokens, archive it as a long-context
   recovery model, not a strict v5 replacement.
 
@@ -283,3 +298,20 @@ prompt set. The next useful work is story quality: reduce too-short/unfinished
 samples and improve local coherence without losing the `60/60` EOS behavior.
 The coherence metrics are lightweight heuristics, not a semantic judge; use
 them to compare local runs and spot regressions before reading samples manually.
+
+## Observed Coherence Preset Result
+
+The first successful `coherence-v1` evaluation was written to
+`runs/generation_eval_1780833963.md`. It keeps the strict 256-token EOS gate and
+uses natural EOS-bounded text instead of fixed sentence trimming.
+
+| Preset set | EOS hits | Avg words | Avg prompt overlap | Story endings | Weak adherence | Character drift | Repeated trigram |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `compact-v61` | 60/60 | 35.8 | 0.30 | 17/60 | 45 | 16/60 | 1 |
+| `coherence-v1` | 60/60 | 89.0 | 0.48 | 31/60 | 25 | 9/60 | 16 |
+
+Interpretation: `coherence-v1` is better for measuring natural story coherence,
+but it is not automatically better for polished demos. It produces longer text
+and exposes more repeated trigrams. Keep `compact-v61` as the short demo preset;
+use `coherence-v1` when the question is whether the model can carry a prompt
+through to a natural EOS-bounded ending.

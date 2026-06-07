@@ -76,13 +76,23 @@ COMPACT_V61_PRESETS = [
     SamplingPreset("creative", 0.70, 30, 1.12, 3, 4),
 ]
 
+COHERENCE_V1_PRESETS = [
+    SamplingPreset("conservative", 0.58, 25, 1.10, 3, 0),
+    SamplingPreset("balanced", 0.62, 30, 1.10, 3, 0),
+    SamplingPreset("creative", 0.70, 30, 1.12, 3, 0),
+]
+
 
 def get_preset_set(name: str) -> list[SamplingPreset]:
     if name == "legacy":
         return DEFAULT_PRESETS
     if name == "compact-v61":
         return COMPACT_V61_PRESETS
-    raise ValueError("unknown preset set; expected one of: legacy, compact-v61")
+    if name == "coherence-v1":
+        return COHERENCE_V1_PRESETS
+    raise ValueError(
+        "unknown preset set; expected one of: legacy, compact-v61, coherence-v1"
+    )
 
 
 def load_prompts(prompt_file: str) -> list[str]:
@@ -221,7 +231,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--preset-set",
         default="legacy",
-        choices=["legacy", "compact-v61"],
+        choices=["legacy", "compact-v61", "coherence-v1"],
         help="sampling preset set to evaluate",
     )
     parser.add_argument("--max-new-tokens", type=int, default=140)

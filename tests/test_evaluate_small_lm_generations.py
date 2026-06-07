@@ -36,11 +36,25 @@ def test_get_preset_set_compact_v61_adjusts_conservative_preset():
     assert conservative.no_repeat_ngram_size == 3
 
 
+def test_get_preset_set_coherence_v1_biases_toward_story_completion():
+    presets = get_preset_set("coherence-v1")
+
+    assert len(presets) == 3
+    assert [preset.name for preset in presets] == [
+        "conservative",
+        "balanced",
+        "creative",
+    ]
+    assert [preset.stop_after_sentences for preset in presets] == [0, 0, 0]
+    assert [preset.top_k for preset in presets] == [25, 30, 30]
+    assert [preset.repetition_penalty for preset in presets] == [1.10, 1.10, 1.12]
+
+
 def test_get_preset_set_rejects_unknown_name():
     try:
         get_preset_set("missing")
     except ValueError as exc:
-        assert "unknown preset set" in str(exc)
+        assert "coherence-v1" in str(exc)
     else:
         raise AssertionError("expected unknown preset set to fail")
 

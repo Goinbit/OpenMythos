@@ -116,6 +116,8 @@ Latest local reports:
 - `runs/generation_eval_1780828569.md` (`max-new-tokens=256`, `preset-set=compact-v61`)
 - `runs/generation_eval_1780832517.md` (`max-new-tokens=256`,
   `preset-set=compact-v61`, with quality and coherence summaries)
+- `runs/generation_eval_1780833963.md` (`max-new-tokens=256`,
+  `preset-set=coherence-v1`, natural EOS text with quality and coherence summaries)
 
 Natural-stop summary:
 
@@ -144,6 +146,18 @@ Quality and coherence summary from `runs/generation_eval_1780832517.md`:
 | `missing_ending` flags | 43 |
 | `weak_prompt_adherence` flags | 45 |
 | `character_drift` flags | 16 |
+
+Preset comparison:
+
+| Preset set | Samples | EOS hits | Avg words | Avg prompt overlap | Story endings | Weak adherence | Character drift | Repeated trigram |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `compact-v61` | 60 | 60/60 | 35.8 | 0.30 | 17/60 | 45 | 16/60 | 1 |
+| `coherence-v1` | 60 | 60/60 | 89.0 | 0.48 | 31/60 | 25 | 9/60 | 16 |
+
+Use `compact-v61` for short demo outputs. Use `coherence-v1` for natural
+EOS-bounded coherence evaluation; it improves prompt adherence and endings, but
+also exposes more repetition because it does not trim after a fixed sentence
+count.
 
 The remaining 256/300-token failure is the conservative Lily sample:
 
@@ -181,12 +195,16 @@ Representative long-tail sample:
 - Coherence metrics are lightweight heuristics, not a semantic judge. They are
   useful for local trend tracking and currently highlight weak prompt adherence,
   missing endings, and character drift as the main next frontier.
+- `coherence-v1` improves local coherence metrics, but produces longer samples
+  and more repeated trigrams, so it is an evaluation preset rather than the
+  default polished-demo preset.
 - The model has no instruction tuning, preference tuning, safety tuning, or
   factual grounding.
 
 ## Status
 
-Use v6.1 with `preset-set=compact-v61` as the current best local TinyStories
-checkpoint/setup. Use v5 only when comparing against the older strict 256-token
+Use v6.1 with `preset-set=compact-v61` as the current best short-demo setup.
+Use v6.1 with `preset-set=coherence-v1` when evaluating natural EOS-bounded
+story coherence. Use v5 only when comparing against the older strict 256-token
 legacy-preset baseline. Use v6 as the seq256 clean-text continuation reference
 point.

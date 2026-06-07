@@ -368,6 +368,47 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · coherence-v1 preset 调参与评估
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — small LM coherence preset 调参
+
+### ✅ 完成
+- `examples/evaluate_small_lm_generations.py` 新增 `coherence-v1` preset set,保留 `legacy` / `compact-v61` 行为不变
+- `coherence-v1` 参数:
+  - conservative:`temperature=0.58 top_k=25 repetition_penalty=1.10 no_repeat_ngram_size=3 stop_after_sentences=0`
+  - balanced:`temperature=0.62 top_k=30 repetition_penalty=1.10 no_repeat_ngram_size=3 stop_after_sentences=0`
+  - creative:`temperature=0.70 top_k=30 repetition_penalty=1.12 no_repeat_ngram_size=3 stop_after_sentences=0`
+- `tests/test_evaluate_small_lm_generations.py` 新增 `coherence-v1` preset 回归测试,并扩展 unknown preset 错误消息断言
+- 跑三轮 MPS 评估并收敛:
+  - draft A:`runs/generation_eval_1780833264.md` → `59/60` EOS,失败,不采纳
+  - draft B:`runs/generation_eval_1780833530.md` → `60/60` EOS,但 story endings `14/60`,不采纳
+  - final:`runs/generation_eval_1780833963.md` → `60/60` EOS,作为 coherence-v1 记录
+- final `coherence-v1` vs `compact-v61`:
+  - EOS:`60/60` → `60/60`
+  - avg words:`35.8` → `89.0`
+  - avg prompt overlap:`0.30` → `0.48`
+  - story endings:`17/60` → `31/60`
+  - weak_prompt_adherence:`45` → `25`
+  - character_drift:`16/60` → `9/60`
+  - repeated_trigram:`1` → `16`
+- `docs/model_cards/openmythos_tinystories_15m_step105000_seq384_clean_v61.md` 与 `docs/runbooks/tinystories_v61_seq384_recovery.md` 记录 preset 对比和使用建议
+
+### 📊 测试变化
+- before:`tests/test_evaluate_small_lm_generations.py` 红灯 2 failed,缺少 `coherence-v1` 分支和错误消息
+- after:`.venv-arm64/bin/python -m pytest tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py -q` → **32 passed**
+- `ruff check examples/evaluate_small_lm_generations.py examples/small_lm_eval_metrics.py examples/generate_small_lm.py examples/train_small_lm.py examples/resize_small_lm_context.py tests/test_evaluate_small_lm_generations.py tests/test_generate_small_lm.py tests/test_train_small_lm.py tests/test_resize_small_lm_context.py` → **All checks passed**
+- 沙盒外 MPS eval(final coherence-v1) → 成功写出 `runs/generation_eval_1780833963.md`
+
+### 🔑 关键决策 / 发现
+- `coherence-v1` 不替代 `compact-v61`:前者用于自然 EOS-bounded coherence 评估,后者仍是短 demo 推荐
+- 固定 5 句截断提高了 prompt overlap,但没有改善 story endings;自然 EOS 文本才显著提高 ending 指标
+- 更长自然文本暴露出更多 repeated trigram,所以 coherence 指标改善不等于 polished 输出全面改善
+
+### 🧭 留到下阶段
+- 可新增 repetition-aware coherence preset,目标是在保留 `coherence-v1` 的 overlap/endings 改善时降低 repeated_trigram
+- 可增加报告中的 preset comparison 自动表格,减少手工解析报告
+
 ## 2026-06-07 · small LM story-coherence 启发式评估
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
