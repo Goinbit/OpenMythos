@@ -187,3 +187,25 @@ shasum -a 256 checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61
 
 Then add a model card recording both the 300-token recovery score and the strict
 256-token score.
+
+## Observed v6.1 Result
+
+The first full v6.1 run completed at step `105000`:
+
+- Final train loss: `1.8100`
+- Validation loss: `1.6227`
+- Late-run throughput: about `4.97k tok/s`
+- Archived checkpoint:
+  `checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt`
+
+Evaluation results:
+
+| Budget | EOS hits | Stop reasons |
+|---:|---:|---|
+| 256 | 59/60 | `eos=59`, `max_new_tokens=1` |
+| 300 | 59/60 | `eos=59`, `max_new_tokens=1` |
+| 376 | 60/60 | `eos=60` |
+
+The remaining strict-budget failure is still the conservative Lily sample
+(`seed=207`). It reaches EOS at `generated_tokens=364` when allowed the full
+seq384 generation budget.

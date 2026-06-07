@@ -368,6 +368,57 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-06-07 · TinyStories 105k seq384 checkpoint v6.1 归档
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**Agents:** 无 · **完成 IDs:** 无新 ID — v6.1 长上下文恢复模型归档
+
+### ✅ 完成
+- 用户完成 full v6.1 run:
+  - checkpoint:`checkpoints/tinystories_mps_small_mythos_seq384_clean_v61.pt`
+  - step:`105000`
+  - final train loss:`1.8100`
+  - val loss:`1.6227`
+  - late-run throughput:`~4.97k tok/s`
+- 复制并归档 v6.1 checkpoint:
+  - `checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt`
+  - 文件大小:`182M`
+  - SHA256:`9caf6ce9a4275122a34d5359905684f39e6aa13a6098d77551db6437a993638d`
+- 从 checkpoint metadata 确认:
+  - `step=105000`
+  - `append_eos=True`
+  - `eos_loss_weight=4.0`
+  - `clean_text=True`
+  - `max_seq_len=384`
+- 跑三套 prompt-file 自然停止评估:
+  - `runs/generation_eval_1780815564.md` strict 256 budget → `59/60`
+  - `runs/generation_eval_1780815382.md` 300 budget → `59/60`
+  - `runs/generation_eval_1780815803.md` full seq384 budget 376 → `60/60`
+- 单独复查唯一长尾:
+  - prompt:`Lily found a small door in the garden`
+  - preset:conservative
+  - seed:`207`
+  - full seq384 budget 下 `eos_hit=True generated_tokens=364`
+- 新增模型卡:
+  - `docs/model_cards/openmythos_tinystories_15m_step105000_seq384_clean_v61.md`
+- 更新 v6.1 runbook,补充已观察结果与归档 checkpoint
+
+### 📊 测试变化
+- 沙盒外 MPS eval(256):成功写出 `runs/generation_eval_1780815564.md`
+- 沙盒外 MPS eval(300):成功写出 `runs/generation_eval_1780815382.md`
+- 沙盒外 MPS eval(376):成功写出 `runs/generation_eval_1780815803.md`
+- 沙盒外 MPS generate(Lily conservative seed 207,max-new=376):成功,`stop_reason=eos`
+
+### 🔑 关键决策 / 发现
+- v6.1 val loss 继续优于 v6:`1.6227` vs `1.6520`
+- v6.1 在严格 256/300 token 预算下为 `59/60`,优于 v6 的 `58/60`,但不如 v5 的 strict `60/60`
+- v6.1 在完整 seq384 预算下达到 `60/60`,因此可归档为“长上下文自然停止恢复版”
+- 唯一长尾 Lily conservative 需要 364 generated tokens 才 EOS;这解释了为什么 256/300 预算仍失败
+
+### 🧭 留到下阶段
+- 若目标是严格 256-token `60/60`,下一步应做 v6.2:长度/EOS 控制而不是继续扩上下文
+- 若目标是最低 validation loss + 长上下文自然停止,当前 v6.1 是最佳本地 checkpoint
+
 ## 2026-06-07 · v6.1 seq384 自然停止诊断工具与 runbook
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
