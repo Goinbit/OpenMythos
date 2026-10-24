@@ -52,9 +52,16 @@ ls checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt        
   --steps 5000 --batch-size 8 --seq-len 384 --device mps \
   --lr 1e-4 --eos-loss-weight 4.0 \
   --packing story --pair-mix 0.5 --dedup-8gram \
+  --train-tokens 20000000 --eval-tokens 200000 \
   --eval-every 500 --eval-batches 20 --log-every 50 --save-every 500 \
   --seed 7 --out checkpoints/tinystories_mps_small_mythos_seq384_story_v7.pt
 ```
+
+> **`--train-tokens` 必须显式放大。** 默认 500k 是 smoke 级预算:dedup 后仅 ~1k 窗口,
+> 5000 步要重复 ~38 遍,模型直接背诵(train loss → 0.33,stream val loss 发散至 2.75+,
+> 2026-10-24 首跑实测)。20M 预算 ≈ 2-3 万窗口 ≈ 1.5 epochs。判定标准:train loss 不低于
+> ~1.0,前 2 个 eval 点(1000 步)val loss 不升破 +0.02 容差;恶化即停,按计划阶梯降
+> `--pair-mix` 至 0.25 → 0。
 
 - 中断续跑:改用 `--resume checkpoints/tinystories_mps_small_mythos_seq384_story_v7.pt`(去掉 `--init-from`)
 - 如 MPS OOM:`--batch-size 4`
@@ -86,6 +93,26 @@ ls checkpoints/openmythos_tinystories_15m_step105000_seq384_clean_v61.pt        
 | missing_ending | 27 | ≤ 15 | — |
 | repeated_trigram | 14 | ≤ 5 | — |
 | val loss(stream eval) | 1.6227 | ≤ 1.6427 | 回退 ≤ 0.02 |
+
+## 5.1 首轮执行结果(2026-10-24 · 两轮均未过 gate)
+
+| 指标 | v6.1 基线 | 目标 | v7 pair0.5+dedup | v7.1 纯 story |
+|---|---|---|---|---|
+| EOS | 60/60 | 60/60 红线 | 55/60 ❌ | 58/60 ❌ |
+| weak_prompt_adherence | 29 | ≤15 | 22 ❌ | 25 ❌ |
+| missing_ending | 27 | ≤15 | 29 ❌ | 25 ❌ |
+| repeated_trigram | 14 | ≤5 | 28 ❌ | 21 ❌ |
+| val loss(stream) | 1.6227 | ≤1.6427 | 1.79 ❌ | 1.73 ❌ |
+
+报告:`runs/generation_eval_1792854412.md`(v7)· `runs/generation_eval_1792857363.md`(v7.1)
+checkpoint:`checkpoints/tinystories_mps_small_mythos_seq384_story_v7_failed_gate.pt` · `..._story_v71.pt`
+
+**结论与教训:**
+1. **8-token 前缀 dedup 过激** — TinyStories 开头模板化,前缀去重砍掉 ~74% 语料(91k→23k 窗口),重复/EOS 恶化主因。风险表原话是"只删完全重复模板",实现越界;v7.1 去掉 dedup 后全面回稳
+2. **pair 机制对目标有效**(weak 29→22,四轮最好)但放大重复(14→28)与 EOS 回退——单调 pair_mix 不可取
+3. **stream-val 红线结构性失真** — story 对齐放弃 mid-story 训练,stream-val 必然 +0.11 偏移;该红线对 T1 类干预无效,主判据应为生成 gate
+4. **数据预算必须显式** — 默认 500k 配 5k 步 = 38 epochs,直接记忆化发散(train loss 0.33 / val 2.75+)
+5. 计划决策规则触发:**T1/T2 收益有限 → 直接上 T3b(15.8M→35M 扩容)**;如继续小模型调优,优先修 pad-tail(短故事窗口尾部重复 EOS 输入,疑损 EOS/重复行为)→ 多故事无 pad 打包
 
 ## 6. 归档 checklist
 

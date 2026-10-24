@@ -372,7 +372,31 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · 迭代计划 T1+T2+T4 实施(story packing / dedup / eval gates)
+## 2026-10-24 · v7/v7.1 首轮训练与 gate 验收(两轮未过,T3b 决策触发)
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T1/T2 首轮执行与验收
+
+### ✅ 完成
+- **发散事故**:首跑(`--train-tokens` 默认 500k)在 1.5k 步内 val 1.83→2.75 单调发散、train loss 崩至 0.33——dedup 后仅 1,062 窗口 × 38 epochs 记忆化。停跑止损、删坏 checkpoint、runbook §3 补 `--train-tokens 20000000` 与判定标准(事故日志 `runs/train_v7_story_diverged_500k.log`)
+- **v7(pair_mix=0.5 + dedup-8gram,5k steps)**:gate 4 项全 FAIL — EOS 55/60(红线破)、weak 22、missing_ending 29、repeated_trigram 28(翻倍)。报告 `runs/generation_eval_1792854412.md`
+- **v7.1(纯 story 对齐回退,按计划风险表阶梯)**:全面好于 v7 但仍未过 — EOS 58/60、weak 25、missing_ending 25、repeated_trigram 21。报告 `runs/generation_eval_1792857363.md`
+- 诊断定案:**8-token 前缀 dedup 过激**(91k→23k 窗口,砍 ~74% 语料,TinyStories 开头模板化所致;风险表要求"只删完全重复模板",实现越界);pair 机制对 weak adherence 确有实效(29→22)但放大重复与 EOS 回退
+- runbook §5.1 与迭代计划文档记录两轮数据、教训与决策触发
+
+### 📊 测试变化
+- 无代码变更(两轮纯训练/评估)
+- gate 工具首轮实战:4 项 FAIL 全部正确拦截,退出码 1 — T4 交付验证成立
+
+### 🔑 关键决策 / 发现
+- **stream-val 红线对 story 类干预结构性失真**(story 对齐不训 mid-story,stream-val 必然 +0.11 偏移);主判据应为生成 gate,val loss 仅作发散监控——本轮两次事故/回退都是 val 趋势先暴露的
+- **数据预算与步数必须匹配**:5k 步配 20M tokens ≈ 1.7 epochs 是安全区;默认 500k 是 smoke 级
+- **计划决策规则触发:T1/T2 收益有限(±2-7 个 flag,无一达标)→ 直接上 T3b 扩容 15.8M→35M**,避免在小模型上过度调数据
+- 残留疑点:短故事窗口尾部重复 EOS 输入(pad-tail)疑损 EOS/重复行为,若继续小模型路线应先改多故事无 pad 打包
+
+### 🧭 留到下阶段
+- T3b 扩容(train_small_lm 增加模型尺寸预设 + 2-3h MPS 训练)需用户确认资源投入;或先做 pad-tail 打包修复的小步迭代
+- v7/v7.1 checkpoint 保留为对照(`*_failed_gate.pt` / `*_v71.pt`),未归档为正式版本
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** `326adcf` + 本日志条目(docs 提交)
 **Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T1/T2/T4 交付

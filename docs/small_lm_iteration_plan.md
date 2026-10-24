@@ -63,9 +63,12 @@ preset 对比已收敛:`coherence-v2` 为自然 EOS-bounded 评估推荐,`compac
 
 ## 3. 迭代路线
 
-> **实施状态(2026-10-24):** T1/T2 数据路径与 T4 评估 gate **代码就绪**(17 项回归测试全绿);
-> 训练执行见 [runbooks/tinystories_v7_story_aligned.md](runbooks/tinystories_v7_story_aligned.md)。
-> T3 未启动,按计划待 T1/T2 结果决定。
+> **实施状态(2026-10-24 更新):** T1/T2/T4 代码交付(18 项回归测试全绿)。首轮训练两轮均**未过验收 gate**:
+> v7(pair0.5+dedup)与 v7.1(纯 story 对齐)在 EOS 红线与重复指标上回退,adherence/ending 仅小幅改善
+> (29→22/25、27→29/25)。详细数据与教训见
+> [runbooks/tinystories_v7_story_aligned.md §5.1](runbooks/tinystories_v7_story_aligned.md)。
+> **计划决策规则已触发:T1/T2 收益有限 → 下一步 T3b(15.8M→35M 扩容)**;
+> 备选:先修 pad-tail 打包(多故事无 pad 窗口)再小幅迭代。
 
 ### T1 — 续写对齐训练(prompt adherence + endings)— 优先
 
