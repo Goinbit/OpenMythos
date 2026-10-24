@@ -64,7 +64,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 # OpenMythos — 优化方案与验收标准
 
-**Project context:** OpenMythos v0.4.0 — PyTorch Recurrent-Depth Transformer (Prelude → Recurrent Block → Coda), MLA/GQA attention, MoE FFN, ACT halting, LoRA depth adapter, LTI injection.
+**Project context:** OpenMythos v0.5.0 — PyTorch Recurrent-Depth Transformer (Prelude → Recurrent Block → Coda), MLA/GQA attention, MoE FFN, ACT halting, LoRA depth adapter, LTI injection.
 
 **Companion documents:**
 - [ANALYSIS_REPORT.md](ANALYSIS_REPORT.md) — full multi-agent analysis
@@ -242,82 +242,86 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ---
 
-## 当前整体状态(截至 2026-04-24)
+## 当前整体状态(截至 2026-10-24)
 
 | Stage | 状态 | 备注 |
 |---|---|---|
 | Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部 |
 | Stage 1 契约硬化 | ✅ 完成 | P1.1-P1.5 全部 |
-| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 + 覆盖 184+ tests |
+| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 + 246 tests |
 | Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
+| small LM 本机轨道(计划外) | ✅ 完成 | 训练/生成/评估/调参/对比 CLI 全套 · 8 模型卡(v0→v6.1)· 2 runbook |
 
-**本地可推进范围内:0 技术债。** 剩余仅 GPU 依赖项 + 低价值风格清扫。
+**本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
 
 ### 基础设施齐备度
 
 | 项 | 状态 |
 |---|---|
-| pytest 守护 | ✅ 197 passed / 0 skipped |
-| GitHub Actions CI | ✅ 3 jobs(test / lint / typecheck) |
+| pytest 守护 | ✅ 246 passed / 0 skipped(2026-10-24 实测) |
+| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,948 stmts)— 超阶段 2 ≥70% 门槛 |
+| GitHub Actions CI | ✅ 3 jobs(test / lint / typecheck,ruff+mypy 均硬闸) |
 | mypy 类型检查 | ✅ 0 errors / 34 files(硬闸) |
 | pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
 | Stop hook 日志强制 | ✅ `.claude/hooks/check_claude_md_updated.sh` |
 | Silent-failure-hunter 残余 | ✅ 0 项 |
-| 文件大小硬闸(400 行) | ✅ 全仓满足 · `run_3b.py` 60 行硬闸保持 |
+| 文件大小(400 行) | ✅ `open_mythos/` 核心模块满足(最大 `config.py` 314 行)· `run_3b.py` 60 行保持 · tests/examples 有已知例外(`test_main.py` 1941 · `experimental/moda.py` 1021 · `train_small_lm.py` 533 等) |
 
 ---
 
-## 最近一轮重点(2026-04-23 → 2026-04-24)
+## 最近一轮重点(2026-06-04 → 2026-10-24 · small LM 工具链 + 进度审计修复)
 
-### 交付总览 · 12 commits · 15 files · 197 tests
+### 交付总览 · 17 commits · small LM 训练/评估闭环 + 审计修复
 
 | 批次 | Commits | 内容 |
 |---|---|---|
-| ①最优路线 3 项 | `565ec81` `ad9b44c` `226db7b` | `_INIT_STD` 常量 · GitHub Actions CI · P3.8 `USE_GRAD_CHECKPOINT` 实装 |
-| ② Stage 4.3 收尾 | `875f84e` | `RouterProtocol` + `BiasRouter` + `build_router` 工厂 |
-| ③ Silent-failure 清零 | `619d286` `18647c2` | LTI `boundary_saturation()` · MoDA `k_write` RoPE guard |
-| ④ 基础设施闭环 | `a33d1c6` `7623aec` | mypy 0 错基线 + `.pre-commit-config.yaml` + CI typecheck job |
-| docs | `92a8093` `737c4ad` `f46b040` `d55c8d3` | 4 条 CLAUDE.md 执行日志 |
-
-### 关键技术决策(未来同类场景可参考)
-
-1. **激活 checkpoint 挂接位置** — 必须在 FSDP wrap 之前(构造期,非训练期);`use_reentrant=False` 强制避免 FSDP+accum 下 silent 丢 backward
-2. **Protocol 工厂模式**(第三次应用):抽 `*Protocol` + `*(cfg)` 工厂,替代硬编码 `if cfg.xxx == "..."`。已有三套:`build_attention` / `build_injection` / `build_router`
-3. **Silent-failure guard 用 `raise` 不 `assert`** — `python -O` 剥离 assert,训练关键不变量必须真 raise(CLAUDE.md §通用工作规范 · 禁止项)
-4. **Guard 放 `forward` 入口而非下游调用处** — 错误消息可行动,不落到 opaque 的 tensor-shape 失败
-5. **`type: ignore[具体码]` 而非泛 `type: ignore`** + `warn_unused_ignores=true` — stale ignore 自动暴露
-6. **typecheck 直接硬闸 / lint 仍 advisory** — 基线清零的门 direct,基线未清的门 `continue-on-error` 先灰度
-7. **pre-commit 不作 CI 闸** — 本地提速工具;CI 独立跑 mypy+ruff 覆盖率足够
-8. **state_dict 布局允许打破**(前提:无预发布 checkpoint)— Router 抽出后 `router.weight` → `router.linear.weight`。在预发布期是可接受的破坏性变更
+| ① small LM 训练/生成闭环 | `54d9f37` `a9d3d28` `5b376cb` | train/generate/evaluate_small_lm + tiny 闭环 · stop reason 上报 · 文本清理 |
+| ② v5→v6.1 训练与归档 | `dcb16a9` `5b8ddf2` `8271d32` `f3bb2cc` `c45ed06` | runbook ×2 · checkpoint 归档 ×2 · compact-v61 preset |
+| ③ 质量/coherence 指标 | `dbe7ed9` `cca2d09` `a79e6a6` `3193912` | quality/coherence 启发式指标 · coherence-v1/v2 presets |
+| ④ eval 报告工具 | `2802b7f` `6eb2570` `0a704fa` | 报告对比 CLI · latest/glob 自动发现 · CSV 输出 |
+| ⑤ 审计修复(2026-10-24) | `40d9d41` + docs 提交 | mypy stale-ignore 3 处 · 文档校准 · 36 处日志 SHA 回填 · 覆盖率基线 |
 
 ### 里程碑数字对比
 
-| 维度 | 本轮起点(`5fe6470`) | 本轮终点(`d55c8d3`) | Δ |
+| 维度 | 2026-04-24 快照 | 2026-10-24 实测 | Δ |
 |---|---|---|---|
-| 测试数 | 184 | **197** | +13 |
-| mypy 错误 | 未配置 | **0** | 基线建立 |
-| CI jobs | 0 | **3** | +3 |
-| silent-failure 残余 | 3 | **0** | −3 |
-| 三工厂齐备度 | 2/3 | **3/3** | +1 |
-| P3.8 TODO | 1 处 | **0** | −1 |
+| 测试数 | 197 | **246** | +49 |
+| 覆盖率(open_mythos) | 未测 | **97%** | 基线建立 |
+| mypy 错误 | 0 | **0**(修复 3 处 stale ignore 后) | 持平 |
+| small LM 模型卡 | 0 | **8**(v0→v6.1) | +8 |
+| 未推送提交 | 0 | **64** | ⚠️ 待合入决策 |
+
+### 技术决策沉淀(跨轮持续有效)
+
+1. **激活 checkpoint 挂接位置** — 必须在 FSDP wrap 之前(构造期,非训练期);`use_reentrant=False` 强制避免 FSDP+accum 下 silent 丢 backward
+2. **Protocol 工厂模式**:抽 `*Protocol` + `*(cfg)` 工厂,替代硬编码 `if cfg.xxx == "..."`。已有三套:`build_attention` / `build_injection` / `build_router`
+3. **Silent-failure guard 用 `raise` 不 `assert`** — `python -O` 剥离 assert,训练关键不变量必须真 raise(§通用工作规范 · 禁止项)
+4. **Guard 放 `forward` 入口而非下游调用处** — 错误消息可行动,不落到 opaque 的 tensor-shape 失败
+5. **`type: ignore[具体码]` + `warn_unused_ignores=true`** — stale ignore 自动暴露(2026-10-24 实证:3 处冗余 ignore 被配置抓住并修复)
+6. **typecheck 直接硬闸 / lint 先灰度** — 基线清零的门 direct,基线未清的门 `continue-on-error` 过渡
+7. **pre-commit 不作 CI 闸** — 本地提速工具;CI 独立跑 mypy+ruff 覆盖率足够
+8. **state_dict 布局允许打破**(前提:无预发布 checkpoint)— 预发布期可接受的破坏性变更
 
 ---
 
 ## 下一轮候选(按可行性)
+
+### 🔴 需用户决策
+- **推送 + PR 合入 main** — 64 个本地提交(含 15 个 small LM 工具链)从未推送;CI 只在 main/PR 触发,这批工作未经 CI 验证
 
 ### 🔴 GPU 必需(Stage 5 全体)
 - **P5.1 Tensor Parallelism** — `ColumnParallelLinear` / `RowParallelLinear` 抽象 · 2 路 TP 下 3B 模型 loss 与单卡 FSDP 等价
 - **P5.2 Expert Parallelism** — MoE `all_to_all` 跨 rank · 256 专家线性扩展 ≥75%
 - **P5.3 Activation Checkpointing 实装扩展** — P3.8 已挂接 CPU 路径 · GPU 验证 FSDP 交互与内存收益
 - **P5.4 Paged KV Cache** — 扩展 `StaticKVCache` 设计支持 8K+ decode · vLLM PagedAttention 兼容
-- **P5.5 长上下文 32K+** — 去除 `_causal_mask` 显式分配 · `variants.py` 中 `max_seq_len=1_000_000` 降级
+- **P5.5 长上下文 32K+** — 移除 `_causal_mask` 显式分配 · `variants.py` 中 `max_seq_len=1_000_000` 降级
 
 ### 🟢 本地可做 · 低价值清扫
-- **ruff baseline 归零**:当前 CI `lint` job `continue-on-error: true`,清完后转硬闸
 - **docs/ mkdocs 渲染**:`docs/` 有 md 未渲染
 - **README.md 版本信息同步**:定期检查 PyPI badge + 文档链接
+- **`tests/test_main.py` 拆分**(1941 行)/ `test_regression_*` 命名规范落地 — 低优先级,可选
 
 ### 🟡 未入 plan 但可考虑
 - **benchmarks/ harness** — 标准化 forward/backward/generate 计时,PR 前后对比
@@ -368,9 +372,37 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-24 · 进度审计 + mypy stale-ignore 修复 + 文档校准
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `40d9d41` + 本日志条目(docs 提交)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 审计修复轮
+
+### ✅ 完成
+- 全项目进度审计:实测对照声明 — 测试 246(声明 197)· mypy 3 errors(声明 0)· ruff 干净 · 覆盖率 97%(声明 ≥70% 但从未量化)
+- 修复 mypy 3 处 stale `type: ignore`(`attention/gqa.py:113` · `training/run_3b.py:40,46`)— `warn_unused_ignores` 如设计暴露 torch stub 演进造成的冗余 ignore;mypy 恢复 0 errors / 34 files(`40d9d41`)
+- `pytest-cov` 覆盖率基线首次量化:**97%**(open_mythos,948 stmts),超过阶段 2 ≥70% 门槛
+- 滚动快照校准:版本 v0.4.0→v0.5.0 · 测试数 197→246 · "文件大小硬闸全仓满足"改精确表述(tests/examples 有已知例外)· 补记 small LM 工具链为已完成方向 · 技术决策沉淀独立成节
+- 回填 36 处 "待提交/未提交" 日志条目的 commit SHA(14 条对应独立 commits · 21 条归 `54d9f37` 批量 squash · 1 条归 `c62aeeb`)
+- 同步镜像指令文档,并补齐其单侧缺失的 7 条日志条目(2026-06-05 30k/20k/5k/200-step/arm64/tiny-small + 2026-05-23 ruff)
+
+### 📊 测试变化
+- before: 246 passed / 0 skipped(代码修复无行为变化)
+- after: 246 passed / 0 skipped
+- 新增: 覆盖率基线 97%(pytest-cov,此前从未测量)
+
+### 🔑 关键决策 / 发现
+- 声明与实测的漂移集中在文档侧:代码(测试/mypy/ruff/架构)全部达标,快照 4.5 个月未更新造成失真
+- `warn_unused_ignores=true` 实证有效:当年必要的 ignore 随 torch stub 演进变冗余,被配置自动暴露为错误 — 保留该配置
+- 64 个本地提交从未推送/过 CI(含 15 个 small LM 工具链),是当前最大交付风险
+- 双文件手同步不可靠:镜像文档曾单侧缺 7 条日志;本次改为从主文档整体重生成
+
+### 🧭 留到下阶段
+- 推送 + PR 合入 main(外发操作,待用户决策;CI 只在 main/PR 触发,这批工作需要 PR 验证)
+- `tests/test_main.py`(1941 行)拆分与 `test_regression_*` 命名规范落地 — 低优先级
+
 ## 2026-06-07 · eval report compare CSV 输出
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `0a704fa`
 **Agents:** 无 · **完成 IDs:** 无新 ID — small LM 评估工具补齐
 
 ### ✅ 完成
@@ -398,7 +430,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · eval report compare latest/glob 自动发现
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `6eb2570`
 **Agents:** 无 · **完成 IDs:** 无新 ID — small LM 评估工具补齐
 
 ### ✅ 完成
@@ -426,7 +458,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · small LM eval report 对比 CLI
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `2802b7f`
 **Agents:** 无 · **完成 IDs:** 无新 ID — small LM 评估工具补齐
 
 ### ✅ 完成
@@ -452,7 +484,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · coherence-v2 repetition-aware preset 验证
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 待提交
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `3193912`
 **Agents:** 无 · **完成 IDs:** 无新 ID — small LM coherence preset 调参
 
 ### ✅ 完成
@@ -496,7 +528,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · coherence-v1 preset 调参与评估
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `a79e6a6`
 **Agents:** 无 · **完成 IDs:** 无新 ID — small LM coherence preset 调参
 
 ### ✅ 完成
@@ -537,7 +569,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · small LM story-coherence 启发式评估
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `cca2d09`
 **Agents:** 无 · **完成 IDs:** 无新 ID — small LM coherence 评估
 
 ### ✅ 完成
@@ -577,7 +609,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · small LM 生成质量指标评估
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `dbe7ed9`
 **Agents:** 无 · **完成 IDs:** 无新 ID — small LM 质量评估
 
 ### ✅ 完成
@@ -613,7 +645,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · v6.1 compact preset strict-256 恢复 60/60
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `c45ed06`
 **Agents:** 无 · **完成 IDs:** 无新 ID — v6.1 采样配置恢复
 
 ### ✅ 完成
@@ -649,7 +681,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · TinyStories 105k seq384 checkpoint v6.1 归档
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `f3bb2cc`
 **Agents:** 无 · **完成 IDs:** 无新 ID — v6.1 长上下文恢复模型归档
 
 ### ✅ 完成
@@ -700,7 +732,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · v6.1 seq384 自然停止诊断工具与 runbook
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `8271d32`
 **Agents:** 无 · **完成 IDs:** 无新 ID — v6.1 训练前诊断
 
 ### ✅ 完成
@@ -736,7 +768,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · TinyStories 100k clean-text checkpoint v6 归档
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `5b8ddf2`
 **Agents:** 无 · **完成 IDs:** 无新 ID — v6 本地模型归档
 
 ### ✅ 完成
@@ -785,7 +817,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · v6 clean-text continuation runbook
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `dcb16a9`
 **Agents:** 无 · **完成 IDs:** 无新 ID — v6 本地训练执行方案
 
 ### ✅ 完成
@@ -818,7 +850,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · small LM 文本清理与生成输出净化
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `5b376cb`
 **Agents:** 无 · **完成 IDs:** 无新 ID — 本机 small LM 生成质量工具链
 
 ### ✅ 完成
@@ -850,7 +882,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · v5 单样本停止诊断与 60/60 复评
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `a9d3d28`
 **Agents:** 无 · **完成 IDs:** 无新 ID — 唯一失败样本诊断
 
 ### ✅ 完成
@@ -890,7 +922,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-07 · v5 prompt-file 自然停止评估 60 样本
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 自然停止评估工具强化
 
 ### ✅ 完成
@@ -928,7 +960,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · v5 自然停止扩展评估 36 样本
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 自然停止评估扩容
 
 ### ✅ 完成
@@ -961,7 +993,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · TinyStories 90k seq256 EOS checkpoint v5 归档
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — seq256 自然停止基线达成
 
 ### ✅ 完成
@@ -1004,7 +1036,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · small LM seq_len=256 warm-start 训练路径
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 长上下文训练实验准备
 
 ### ✅ 完成
@@ -1034,7 +1066,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · TinyStories 85k weighted EOS checkpoint v4 归档
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — weighted EOS 继续训练对照
 
 ### ✅ 完成
@@ -1079,7 +1111,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · TinyStories 80k weighted EOS checkpoint v3 归档
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 本机 weighted EOS 自然停止验证
 
 ### ✅ 完成
@@ -1124,7 +1156,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · EOS 自然停止训练权重与评估指标
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — small LM 自然停止能力推进
 
 ### ✅ 完成
@@ -1154,7 +1186,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · TinyStories 70k EOS checkpoint v2 归档
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — EOS 训练版本整理
 
 ### ✅ 完成
@@ -1189,7 +1221,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · small LM 训练数据 EOS 追加
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 生成自然停止能力前置
 
 ### ✅ 完成
@@ -1229,7 +1261,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-06 · TinyStories 60k checkpoint v1 归档
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 本机训练模型版本整理
 
 ### ✅ 完成
@@ -1263,7 +1295,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-05 · TinyStories 40k checkpoint v0 归档
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 本机训练模型版本整理
 
 ### ✅ 完成
@@ -1296,7 +1328,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-05 · TinyStories MPS small LM 40k-step 训练结果
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 本机 MPS 小模型持续训练
 
 ### ✅ 完成
@@ -1325,7 +1357,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-05 · small LM 批量生成评估脚本
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — checkpoint 质量评估工具
 
 ### ✅ 完成
@@ -1357,7 +1389,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-05 · small LM 生成句子截断参数
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 生成体验优化
 
 ### ✅ 完成
@@ -1386,7 +1418,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 2026-06-05 · small LM 生成脚本重复控制优化
 
-**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 未提交(working tree)
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
 **Agents:** 无 · **完成 IDs:** 无新 ID — 生成质量优化
 
 ### ✅ 完成
@@ -1416,6 +1448,234 @@ All work in this project must reference the phase/item below when opening a PR (
 ### 🧭 留到下阶段
 - 如需进一步优化生成体验,可增加 `--stop-after-sentences` 或训练时显式追加 EOS token
 - 可新增批量评估脚本,固定多个 prompt 生成多样本并保存到 `runs/`
+
+## 2026-06-05 · TinyStories MPS small LM 30k-step 训练结果
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机 MPS 小模型持续训练
+
+### ✅ 完成
+- 用户继续训练 TinyStories small LM checkpoint 到 step 30000
+  - checkpoint:`checkpoints/tinystories_mps_small_mythos.pt`
+  - device:`mps`
+  - step:30000
+  - final train loss:2.1267
+  - val loss:1.9065
+  - 后段吞吐约 5,144 → 5,280 tok/s
+- 当前 checkpoint 已成为本机 MPS small LM 的最新最佳基线
+
+### 📊 测试变化
+- TinyStories checkpoint 从 20k 继续训练到 30k
+- val loss 从 20k 的 2.1564 降至 30k 的 1.9065
+- 长跑吞吐在后段稳定并继续提升至约 5.28k tok/s
+
+### 🔑 关键决策 / 发现
+- 20k→30k 仍有明显 validation loss 收益,尚未进入完全平台期
+- 当前 checkpoint 应先备份/另存,避免后续实验覆盖唯一好模型
+- 下一步优先做固定 prompts 生成质量评估;再决定是否继续 40k 或调采样/模型规模
+
+### 🧭 留到下阶段
+- 复制 `checkpoints/tinystories_mps_small_mythos.pt` 为 30k 标记文件
+- 对 30k checkpoint 跑 `Once upon a time` / `Tom lost his red ball` / `Lily found...` 固定生成对比
+- 若继续训练,建议保留 30k checkpoint 并输出到新文件或确认覆盖策略
+
+## 2026-06-05 · TinyStories MPS small LM 20k-step 训练结果
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机 MPS 小模型持续训练
+
+### ✅ 完成
+- 用户继续训练 TinyStories small LM checkpoint 到 step 20000
+  - checkpoint:`checkpoints/tinystories_mps_small_mythos.pt`
+  - device:`mps`
+  - step:20000
+  - final train loss:2.3072
+  - val loss:2.1564
+  - 后段吞吐从约 4,746 回升至 5,056 tok/s
+- checkpoint 已保存于 step 20000,可直接生成评估或继续 resume
+
+### 📊 测试变化
+- TinyStories checkpoint 从 5k/10k 阶段继续训练至 20k
+- val loss 已从 5k 的 2.5594 降至 20k 的 2.1564
+- MPS 长跑稳定性验证:20k step 完整完成并保存
+
+### 🔑 关键决策 / 发现
+- batch=16 初期曾观察到约 4k tok/s,长跑后段回升至约 5k tok/s;MPS 吞吐受预热/调度/系统状态影响明显
+- 当前 20k checkpoint 已值得作为本机 small LM 基线保存
+- 下一步应优先做固定 prompt 生成评估,而不是盲目继续训练
+
+### 🧭 留到下阶段
+- 对 20k checkpoint 运行多 prompt/多温度生成,确认重复、连贯性与故事结构
+- 若生成质量仍明显上升,可继续到 30k;若开始重复/收益变小,考虑扩数据或调模型规模
+
+## 2026-06-05 · TinyStories MPS small LM 5k-step 训练结果
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机 MPS 小模型质量训练
+
+### ✅ 完成
+- 用户在 `.venv-arm64` 环境下完成 TinyStories 数据集的 `examples.train_small_lm` MPS 训练
+  - checkpoint:`checkpoints/tinystories_mps_small_mythos.pt`
+  - device:`mps`
+  - step:5000
+  - final train loss:2.7199
+  - val loss:2.5594
+  - 后段吞吐约 5,159 → 5,221 tok/s
+- 相比 Wikitext 200-step baseline,训练目标从工程验证进入 small LM 可读性实验阶段
+
+### 📊 测试变化
+- TinyStories 5k-step 训练完成:checkpoint 保存成功
+- val loss 降至 2.5594,已具备生成短故事文本的基础条件
+
+### 🔑 关键决策 / 发现
+- TinyStories 在 MPS 上吞吐显著高于先前 Wikitext 200-step smoke,后段稳定约 5.2k tok/s
+- 当前 checkpoint 值得立即做多温度生成评估,再决定是否 resume 到 10k/20k step
+- val loss 已明显低于 Wikitext 小跑结果,数据集选择对可读生成质量影响很大
+
+### 🧭 留到下阶段
+- 用 `examples.generate_small_lm` 对同一 checkpoint 测试 temperature 0.7/0.8/1.0 与 top-k 30/40/80
+- 若生成已有故事结构,建议 `--resume checkpoints/tinystories_mps_small_mythos.pt` 继续训到 10k 或 20k step
+- 后续可新增一个固定 prompt 评估脚本,批量输出多个样本并保存到 `runs/`
+
+## 2026-06-05 · MPS small LM 200-step 本机训练结果
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本机 MPS 训练实测
+
+### ✅ 完成
+- 用户在 `.venv-arm64` 环境下完成 `examples.train_small_lm` 的 Wikitext MPS 训练
+  - checkpoint:`checkpoints/local_mps_small_mythos.pt`
+  - device:`mps`
+  - step:200
+  - final train loss:7.0166
+  - val loss:7.3310
+  - 后段吞吐约 1,489 → 1,638 tok/s
+- 用户用 `examples.generate_small_lm` 成功加载 step=200 checkpoint 并生成文本
+
+### 📊 测试变化
+- MPS small LM 长于 smoke 的真实训练完成:step=200 checkpoint 保存成功
+- 生成输出已能形成英文高频 token/标点模式,但语义仍不稳定
+
+### 🔑 关键决策 / 发现
+- 当前 200-step / batch=4 / seq=64 仅约 5.1 万训练 token 更新量,主要验证工程链路,不是质量训练
+- Wikitext 输出出现 `@-@` 等 Wikipedia/tokenization 痕迹,若目标是可读短文,TinyStories 更适合作为下一轮数据集
+- 当前 MPS 吞吐足以支持本机跑 2k~10k step 的 small 模型实验
+
+### 🧭 留到下阶段
+- 建议新开 TinyStories checkpoint 跑 5k~10k step,观察 val loss 与生成质量
+- 保留 Wikitext checkpoint 作为本机 MPS 工程验证基线
+
+## 2026-06-05 · arm64 PyTorch/MPS 本地训练环境
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本地 MPS 训练环境升级
+
+### ✅ 完成
+- 新增 `.venv-arm64/` 本地虚拟环境(由 `/opt/homebrew/bin/python3.12` 创建)
+  - Python 架构为 `arm64`;旧 `.venv` 保留为 `x86_64` 回退环境
+  - 安装 `torch-2.12.0-cp312-cp312-macosx_14_0_arm64.whl`
+  - 安装项目训练依赖:`transformers 5.10.2` / `datasets 4.8.5` / `pytest 9.0.3` / `loguru 0.7.3`
+- `.gitignore` 增加 `.venv-arm64/`,避免本地环境目录进入 git
+
+### 📊 测试变化
+- `.venv-arm64/bin/python -c "import platform; print(platform.machine())"` → `arm64`
+- `.venv-arm64/bin/python -c "import torch; print(torch.__version__)"` → `2.12.0`
+- 沙盒外 MPS 检测:`torch.backends.mps.is_available()` → `True`
+- 沙盒外 MPS tensor smoke:`x @ x.T` + backward → 成功
+- `.venv-arm64/bin/python -m examples.train_tiny_mythos --steps 2 --batch-size 2 --seq-len 16 --log-every 1 --eval-every 0 --device mps --out /tmp/tiny_mythos_mps_test.pt` → checkpoint 成功保存
+- `.venv-arm64/bin/python -m examples.train_small_lm --dataset Salesforce/wikitext --dataset-config wikitext-2-raw-v1 --steps 1 --batch-size 2 --seq-len 32 --device mps --eval-every 0 --log-every 1 --save-every 1 --train-tokens 5000 --eval-tokens 1000 --out /tmp/small_mythos_mps_test.pt` → checkpoint 成功保存
+
+### 🔑 关键决策 / 发现
+- 旧 `.venv` 的 Python 是 `x86_64`,导致 pip 只能看到旧 torch wheel 且 MPS 不可用
+- 原生 arm64 Python 位于 `/opt/homebrew/bin/python3.12`;用它创建 `.venv-arm64` 后,沙盒外 MPS 可用
+- Codex 沙盒内 `mps_available=False`,沙盒外 `mps_available=True`;后续 MPS 验证需在普通 Terminal 或 Codex escalated 命令中执行
+- 新版 Hugging Face 依赖下短名 `wikitext` 会触发 URI 解析错误;改用 `Salesforce/wikitext`
+- 1-step tiny/small MPS smoke 只证明可用性;小 batch 首步吞吐不代表稳定训练吞吐
+
+### 🧭 留到下阶段
+- 用 `.venv-arm64` 跑 50~200 step MPS/CPU 对比 benchmark,确定本机最佳 batch/seq_len
+- 若 MPS 小 batch 仍慢,保留 CPU 用于 smoke,把长训放到 CUDA 服务器
+
+## 2026-06-04 · tiny/small Mythos 训练 + 加载生成闭环示例
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `54d9f37`（批量 squash 入库）
+**Agents:** 无 · **完成 IDs:** 无新 ID — 本地训练/使用模型对接示例
+
+### ✅ 完成
+- 新增 `examples/train_tiny_mythos.py`
+  - 离线 byte-level tokenizer + 内置小语料,不依赖 Hugging Face 网络
+  - 构造 tiny `OpenMythos` 配置,执行 next-byte LM 训练
+  - 保存 checkpoint 到 `checkpoints/tiny_mythos.pt`(包含纯 dict config + `state_dict`)
+- 新增 `examples/generate_tiny_mythos.py`
+  - 从 tiny checkpoint 恢复 `MythosConfig` + `OpenMythos`
+  - 加载权重后调用 `model.generate(...)` 做 byte-level 文本生成
+- 新增 `examples/train_small_lm.py`
+  - 使用 `gpt2` tokenizer + Hugging Face text dataset 训练 OpenMythos 自己的小型 LM
+  - 默认 Wikitext-2,支持替换 dataset/config/split/token budget/设备
+  - 保存 checkpoint 到 `checkpoints/small_mythos.pt`(包含 tokenizer id + config dict + `state_dict`)
+  - 增加 GPU 长跑入口参数:`--amp` / `--save-every` / `--resume`
+  - checkpoint 同步保存 `optimizer` + AMP `scaler` 状态,支持断点续训
+- 新增 `examples/generate_small_lm.py`
+  - 从 small LM checkpoint 恢复 tokenizer、config、权重
+  - 用 `model.generate(...)` 生成正常 tokenizer 文本
+- `.gitignore` 增加 `checkpoints/`,避免训练产物误入 git
+
+### 📊 测试变化
+- `ruff check examples/train_tiny_mythos.py examples/generate_tiny_mythos.py examples/train_small_lm.py examples/generate_small_lm.py` → **All checks passed**
+- `ruff check .` → **All checks passed**
+- `.venv/bin/python -m examples.train_tiny_mythos --steps 2 --batch-size 2 --seq-len 16 --log-every 1 --eval-every 0 --device cpu --out /tmp/tiny_mythos_test.pt` → checkpoint 成功保存
+- `.venv/bin/python -m examples.generate_tiny_mythos --checkpoint /tmp/tiny_mythos_test.pt --prompt "OpenMythos " --max-new-tokens 16 --device cpu --top-k 16` → 成功加载并生成
+- `.venv/bin/python -m examples.train_small_lm --dataset wikitext --dataset-config wikitext-2-raw-v1 --steps 1 --batch-size 2 --seq-len 32 --device cpu --eval-every 0 --log-every 1 --train-tokens 5000 --eval-tokens 1000 --out /tmp/small_mythos_test.pt` → checkpoint 成功保存
+- `.venv/bin/python -m examples.generate_small_lm --checkpoint /tmp/small_mythos_test.pt --prompt "Once upon a time" --max-new-tokens 12 --device cpu --top-k 20` → 成功加载并生成
+- `.venv/bin/python -m examples.train_small_lm --dataset wikitext --dataset-config wikitext-2-raw-v1 --steps 1 --batch-size 2 --seq-len 32 --device cpu --eval-every 0 --log-every 1 --save-every 1 --train-tokens 5000 --eval-tokens 1000 --out /tmp/small_mythos_resume_test.pt` → step=1 checkpoint 保存
+- `.venv/bin/python -m examples.train_small_lm --dataset wikitext --dataset-config wikitext-2-raw-v1 --steps 1 --batch-size 2 --seq-len 32 --device cpu --eval-every 0 --log-every 1 --save-every 1 --train-tokens 5000 --eval-tokens 1000 --resume /tmp/small_mythos_resume_test.pt --out /tmp/small_mythos_resume_test.pt` → 从 step=1 resume 到 step=2
+- `.venv/bin/python -m examples.generate_small_lm --checkpoint /tmp/small_mythos_resume_test.pt --prompt "Once upon a time" --max-new-tokens 12 --device cpu --top-k 20` → 成功加载 step=2 checkpoint 并生成
+
+### 🔑 关键决策 / 发现
+- 使用 byte-level tokenizer 避免网络与 HF token 依赖,先验证 train-save-load-generate 的工程闭环
+- checkpoint 不直接 pickle `MythosConfig`,而是保存 `CONFIG_KWARGS` 纯字典,降低跨版本加载风险
+- 2-step 验证的生成文本不追求质量,只验证 checkpoint 与推理路径;真实文本质量需要更长训练/真实数据
+- small LM 脚本保留网络数据路径,作为从 toy demo 过渡到真实 OpenMythos LM 训练的最小实用入口
+- AMP scaler 使用兼容封装:PyTorch 新版优先 `torch.amp.GradScaler`,旧版回退 `torch.cuda.amp.GradScaler`,CPU/非 AMP 路径使用 no-op scaler
+
+### 🧭 留到下阶段
+- 将 tiny 示例扩展为可选外部文本文件输入
+- 在有 CUDA 的机器上把同一 save/load 流程接到 `training/run_3b.py` 产出的正式 checkpoint
+
+---
+
+## 2026-05-23 · ruff 基线清零 + CI lint 硬闸
+
+**分支:** `main` · **commits:** `c62aeeb`
+**Agents:** 无 · **完成 IDs:** 无新 ID — 基础设施候选`ruff baseline 归零`
+
+### ✅ 完成
+- `pyproject.toml` 新增 `tool.ruff.lint.per-file-ignores`:
+  - 对 `training/run_3b.py` 豁免 `E401/E701/E702`(保留 Stage 4.5 的 `<=60` 行硬闸与紧凑入口风格)
+- 清理未使用 import:
+  - `tests/test_experimental_moda.py` 删除 `math`
+  - `training/eval.py` 删除 `Optional`
+  - `training/trainer.py` 删除未使用 `torch`
+- `.github/workflows/ci.yml`:
+  - `lint` job 去掉 `continue-on-error: true`
+  - `ruff check` 由 advisory 改为 blocking gate
+- 本地验证:`ruff check .` → **All checks passed**
+- `training/run_3b.py` 行数保持 **60 行**
+
+### 📊 测试变化
+- before: 文档基线 `197 passed / 0 skipped`
+- after: 未执行完整 pytest(本机缺少 `torch`)
+- 相关命令: `pytest tests/test_training.py tests/test_experimental_moda.py -q` 在收集阶段报 `ModuleNotFoundError: No module named 'torch'`
+
+### 🔑 关键决策 / 发现
+- 对 `run_3b.py` 采用**文件级 ruff 豁免**而非拉长文件重写,以满足既有 `<=60` 行约束且不放松全局 lint 标准
+- lint 硬闸切换前先确保主干 `ruff check .` 全绿,避免 CI 立即红灯
+
+### 🧭 留到下阶段
+- 在带 `torch` 的环境补跑全量测试(`pytest test_main.py tests/ --ignore=tests/test_tokenizer.py`)
+- `ruff` 规则后续可逐步收紧,评估是否移除 `run_3b.py` 的局部豁免
+
+---
 
 ## 2026-04-24 · mypy 零错基线 + pre-commit + CI typecheck job
 
