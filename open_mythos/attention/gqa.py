@@ -105,12 +105,11 @@ class GQAttention(nn.Module):
         try:
             # enable_gqa is PyTorch ≥ 2.5 only; older torch raises TypeError at
             # call time and falls through to the repeat_interleave branch below.
-            # mypy sees the baseline (older) signature so ignore the call-arg.
             out = F.scaled_dot_product_attention(
                 q, k, v,
                 is_causal=is_causal,
                 dropout_p=dropout_p,
-                enable_gqa=(q.shape[-3] != k.shape[-3]),  # type: ignore[call-arg]
+                enable_gqa=(q.shape[-3] != k.shape[-3]),
             )
         except TypeError:
             # PyTorch < 2.5: no enable_gqa kwarg. Manually expand KV heads.
