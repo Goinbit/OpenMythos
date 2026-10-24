@@ -372,7 +372,28 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · 进度审计 + mypy stale-ignore 修复 + 文档校准
+## 2026-10-24 · 训练成果盘点 + small LM 迭代计划
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — 训练轨道规划
+
+### ✅ 完成
+- 盘点 small LM 训练成果:loss 轨迹 2.56→1.62(105k steps, v0→v6.1),自然停止 60/60 已稳定;用 `compare_small_lm_eval_reports --latest 6` 汇总最近 6 份评估报告
+- 瓶颈排序(60 样本, v6.1 + coherence-v2):weak_prompt_adherence 29 → missing_ending 27 → repeated_trigram 14 → character_drift 8;判定当前是**条件对齐与故事结构**问题,非停止问题
+- 新增 `docs/small_lm_iteration_plan.md`:T1 续写对齐训练(故事对齐打包 + 续写对混合)→ T2 数据去重 → T3a seq512 / T3b 扩容 35M → T4 评估 gate 工具化;含验收门槛(weak ≤ 15、missing_ending ≤ 15、EOS 60/60 红线、val loss 回退 ≤ 0.02)与风险回退
+
+### 📊 测试变化
+- 无代码变更,未新增 Python 测试
+- 评估数据:`runs/generation_eval_*.md` 26 份 + `docs/model_cards/` 8 份为盘点依据
+
+### 🔑 关键决策 / 发现
+- 训练数据是连续 token 流打包,窗口不与故事边界对齐 — 这是 endings 欠采样与 prompt drift 的共同根因,T1 优先改数据组织而非加步数
+- 模型尺寸硬编码(dim=256, 15.8M):扩容需先给 `train_small_lm.py` 加尺寸预设,列为 T3b 前置
+- 迭代红线:任何一轮不得牺牲 EOS 60/60(v5 以来硬成果)与 val loss 回退 > 0.02
+
+### 🧭 留到下阶段
+- T1 实施(数据打包改造 + 续训)与 T4 评估 gate 并行启动
+- 66 个提交已在 fork(Goinbit/OpenMythos),上游 PR 仍待用户决策
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** `40d9d41` + 本日志条目(docs 提交)
 **Agents:** 无 · **完成 IDs:** 无新 ID — 审计修复轮
