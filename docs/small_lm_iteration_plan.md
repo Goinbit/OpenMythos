@@ -63,6 +63,10 @@ preset 对比已收敛:`coherence-v2` 为自然 EOS-bounded 评估推荐,`compac
 
 ## 3. 迭代路线
 
+> **实施状态(2026-10-24):** T1/T2 数据路径与 T4 评估 gate **代码就绪**(17 项回归测试全绿);
+> 训练执行见 [runbooks/tinystories_v7_story_aligned.md](runbooks/tinystories_v7_story_aligned.md)。
+> T3 未启动,按计划待 T1/T2 结果决定。
+
 ### T1 — 续写对齐训练(prompt adherence + endings)— 优先
 
 **假设:** 把训练样本从"连续流"改为"故事对齐 + 续写对"混合,可同时改善 prompt adherence 与结尾完整度。

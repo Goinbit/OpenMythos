@@ -169,3 +169,197 @@ def test_load_matching_model_weights_skips_shape_mismatches():
     assert result.skipped == ["changed.weight", "unknown.weight"]
     assert torch.equal(model.same.weight, torch.full_like(model.same.weight, 2.0))
     assert torch.equal(model.same.bias, torch.full_like(model.same.bias, 3.0))
+
+
+from examples.small_lm_data import (  # noqa: E402
+    StoryAlignedDataset,
+    collect_stories,
+    dedup_stories,
+    split_opening,
+)
+
+
+class WordTokenizer:
+    eos_token_id = 99
+
+    def __init__(self) -> None:
+        self.vocab: dict[str, int] = {}
+
+    def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
+        assert not add_special_tokens
+        return [self.vocab.setdefault(word, len(self.vocab) + 1) for word in text.split()]
+
+
+def test_split_opening_uses_first_sentence():
+    opening, rest = split_opening("Tom lost his ball. He ran home quickly.")
+
+    assert opening == "Tom lost his ball."
+    assert rest == " He ran home quickly."
+
+
+def test_split_opening_extends_when_first_sentence_is_short():
+    opening, rest = split_opening("Tom ran. He found the ball.")
+
+    assert opening == "Tom ran. He found the ball."
+    assert rest == ""
+
+
+def test_split_opening_keeps_text_without_boundary():
+    assert split_opening("alpha beta") == ("alpha beta", "")
+
+
+def test_story_dataset_pads_short_stories_and_masks_padding():
+    stories = collect_stories(
+        [{"text": "alpha beta gamma"}],
+        WordTokenizer(),
+        max_tokens=100,
+        text_field="text",
+        eos_token_id=99,
+        append_eos=True,
+    )
+
+    ds = StoryAlignedDataset(
+        stories, seq_len=5, pair_mix=0.0, eos_token_id=99
+    )
+    x, y, mask = ds[0]
+
+    assert x.tolist() == [1, 2, 3, 99, 99]
+    assert y.tolist() == [2, 3, 99, 99, 99]
+    assert mask.tolist() == [1.0, 1.0, 1.0, 0.0, 0.0]
+
+
+def test_story_pair_masks_opening_targets_only():
+    stories = collect_stories(
+        [{"text": "alpha beta gamma. delta epsilon."}],
+        WordTokenizer(),
+        max_tokens=100,
+        text_field="text",
+        eos_token_id=99,
+        append_eos=True,
+    )
+
+    ds = StoryAlignedDataset(
+        stories, seq_len=5, pair_mix=1.0, eos_token_id=99
+    )
+    _x, y, mask = ds[0]
+
+    assert y.tolist() == [2, 3, 4, 5, 99]
+    assert mask.tolist() == [0.0, 0.0, 1.0, 1.0, 1.0]
+
+
+def test_story_pair_mix_fraction_is_deterministic():
+    stories = collect_stories(
+        [{"text": f"aaa bbb ccc{i}. ddd eee."} for i in range(4)],
+        WordTokenizer(),
+        max_tokens=1000,
+        text_field="text",
+        eos_token_id=99,
+        append_eos=True,
+    )
+
+    ds = StoryAlignedDataset(
+        stories, seq_len=8, pair_mix=0.5, eos_token_id=99
+    )
+    masked = sum(1 for i in range(len(ds)) if ds[i][2][0] == 0.0)
+
+    assert len(ds) == 4
+    assert masked == 2
+
+
+def test_dedup_8gram_drops_template_stories():
+    tok = WordTokenizer()
+    stories = collect_stories(
+        [
+            {"text": "t1 t2 t3 t4 t5 t6 t7 t8 tailA"},
+            {"text": "t1 t2 t3 t4 t5 t6 t7 t8 tailB"},
+            {"text": "u1 u2 u3 u4 u5 u6 u7 u8 tailA"},
+        ],
+        tok,
+        max_tokens=1000,
+        text_field="text",
+        eos_token_id=99,
+        append_eos=True,
+    )
+
+    kept, dropped = dedup_stories(stories, enabled=True)
+
+    assert dropped == 1
+    assert len(kept) == 2
+    kept_off, dropped_off = dedup_stories(stories, enabled=False)
+    assert dropped_off == 0 and len(kept_off) == 3
+
+
+def test_compute_loss_ignores_masked_targets():
+    torch.manual_seed(0)
+    logits = torch.randn(1, 4, 6)
+    mask = torch.tensor([[0.0, 1.0, 1.0, 1.0]])
+    y_a = torch.tensor([[1, 2, 3, 4]])
+    y_b = torch.tensor([[5, 2, 3, 4]])
+
+    loss_a = train_small_lm.compute_loss(logits, y_a, 6, None, mask)
+    loss_b = train_small_lm.compute_loss(logits, y_b, 6, None, mask)
+
+    assert torch.isclose(loss_a, loss_b)
+
+
+def test_compute_loss_matches_plain_cross_entropy_when_unmasked():
+    torch.manual_seed(1)
+    logits = torch.randn(2, 3, 6)
+    y = torch.tensor([[1, 2, 3], [4, 5, 0]])
+    mask = torch.ones(2, 3)
+    weights = torch.tensor([1.0, 1.0, 4.0, 1.0, 1.0, 1.0])
+
+    expected = torch.nn.functional.cross_entropy(
+        logits.reshape(-1, 6), y.reshape(-1)
+    )
+    assert torch.isclose(train_small_lm.compute_loss(logits, y, 6, None, mask), expected)
+
+    expected_w = torch.nn.functional.cross_entropy(
+        logits.reshape(-1, 6), y.reshape(-1), weight=weights
+    )
+    assert torch.isclose(
+        train_small_lm.compute_loss(logits, y, 6, weights, mask), expected_w
+    )
+
+
+def test_save_checkpoint_records_data_settings(tmp_path):
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    checkpoint = tmp_path / "small.pt"
+
+    save_checkpoint(
+        checkpoint,
+        model,
+        optimizer,
+        NoOpScaler(),
+        build_config(vocab_size=100, max_seq_len=8),
+        tokenizer="gpt2",
+        step=12,
+        loss=3.4,
+        append_eos=True,
+        eos_loss_weight=4.0,
+        packing="story",
+        pair_mix=0.5,
+        dedup_8gram=True,
+    )
+
+    ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
+
+    assert ckpt["packing"] == "story"
+    assert ckpt["pair_mix"] == 0.5
+    assert ckpt["dedup_8gram"] is True
+
+
+def test_regression_story_dataset_train_stats_never_touches_data_buffer():
+    """setup stats must not assume PackedTextDataset.data (smoke-found bug)."""
+    stories = collect_stories(
+        [{"text": "alpha beta gamma"}],
+        WordTokenizer(),
+        max_tokens=100,
+        text_field="text",
+        eos_token_id=99,
+        append_eos=True,
+    )
+    ds = StoryAlignedDataset(stories, seq_len=5, pair_mix=0.0, eos_token_id=99)
+
+    assert train_small_lm.train_stats(ds, "story") == "train windows=1"

@@ -12,8 +12,11 @@ from transformers import AutoTokenizer
 
 from examples.generate_small_lm import generate_tokens, trim_after_sentences
 from examples.small_lm_eval_metrics import (
+    check_gates,
     compute_coherence_metrics,
     compute_quality_metrics,
+    parse_eos_requirement,
+    parse_fail_on,
     render_coherence_summary,
     render_quality_summary,
 )
@@ -252,6 +255,21 @@ def parse_args() -> argparse.Namespace:
         help="disable deterministic cleanup of mojibake punctuation in decoded text",
     )
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument(
+        "--require-eos",
+        default="",
+        help='gate: require EOS hits, e.g. "60/60"; exit 1 when unmet',
+    )
+    parser.add_argument(
+        "--fail-on",
+        action="append",
+        default=[],
+        metavar="FLAG=COUNT",
+        help=(
+            "gate: exit 1 when a quality/coherence flag count exceeds COUNT; "
+            "repeatable, e.g. --fail-on repeated_trigram=5"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -350,6 +368,18 @@ def generate_one(
     )
 
 
+def count_flags(results: list[GenerationResult]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in results:
+        quality = compute_quality_metrics(
+            result.text, result.generated_tokens, result.stop_reason
+        )
+        coherence = compute_coherence_metrics(result.prompt, result.text)
+        for flag in [*quality.flags, *coherence.flags]:
+            counts[flag] = counts.get(flag, 0) + 1
+    return counts
+
+
 def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
@@ -392,6 +422,22 @@ def main() -> None:
     out_path = out_dir / f"generation_eval_{int(time.time())}.md"
     out_path.write_text(report, encoding="utf-8")
     print(f"[saved] {out_path}")
+
+    if args.require_eos or args.fail_on:
+        require_eos = parse_eos_requirement(args.require_eos) if args.require_eos else None
+        fail_on = [parse_fail_on(spec) for spec in args.fail_on]
+        violations = check_gates(
+            eos_hits=sum(1 for result in results if result.eos_hit),
+            sample_count=len(results),
+            flag_counts=count_flags(results),
+            require_eos=require_eos,
+            fail_on=fail_on,
+        )
+        if violations:
+            for violation in violations:
+                print(f"[gate] FAIL {violation}")
+            raise SystemExit(1)
+        print("[gate] PASS")
 
 
 if __name__ == "__main__":

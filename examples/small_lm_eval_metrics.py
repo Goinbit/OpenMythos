@@ -295,3 +295,75 @@ def render_coherence_summary(results: list[GenerationMetricInput]) -> list[str]:
         lines.append("| none | 0 |")
     lines.append("")
     return lines
+
+
+KNOWN_FLAGS = {
+    "budget_stop",
+    "mojibake",
+    "repeated_trigram",
+    "repeated_fourgram",
+    "too_short",
+    "long_generation",
+    "unclosed_quote",
+    "weak_prompt_adherence",
+    "missing_ending",
+    "character_drift",
+}
+
+
+def parse_eos_requirement(spec: str) -> tuple[int, int]:
+    """Parse ``"60/60"`` into (required_hits, expected_total)."""
+    parts = spec.strip().split("/")
+    if len(parts) != 2:
+        raise ValueError(f'--require-eos expects "hits/total", got {spec!r}')
+    try:
+        required, total = int(parts[0]), int(parts[1])
+    except ValueError as exc:
+        raise ValueError(f'--require-eos expects integers "hits/total", got {spec!r}') from exc
+    if total <= 0 or not 0 <= required <= total:
+        raise ValueError(f"--require-eos hits must satisfy 0 <= hits <= total, got {spec!r}")
+    return required, total
+
+
+def parse_fail_on(spec: str) -> tuple[str, int]:
+    """Parse ``"repeated_trigram=5"`` into (flag, max_allowed)."""
+    name, sep, value = spec.partition("=")
+    name = name.strip()
+    if not sep:
+        raise ValueError(f'--fail-on expects "flag=count", got {spec!r}')
+    if name not in KNOWN_FLAGS:
+        expected = ", ".join(sorted(KNOWN_FLAGS))
+        raise ValueError(f"unknown flag in --fail-on: {name!r}; expected one of: {expected}")
+    try:
+        allowed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"--fail-on count must be an integer, got {spec!r}") from exc
+    if allowed < 0:
+        raise ValueError(f"--fail-on count must be >= 0, got {spec!r}")
+    return name, allowed
+
+
+def check_gates(
+    eos_hits: int,
+    sample_count: int,
+    flag_counts: dict[str, int],
+    require_eos: tuple[int, int] | None = None,
+    fail_on: list[tuple[str, int]] | tuple[tuple[str, int], ...] = (),
+) -> list[str]:
+    """Return gate violation messages; an empty list means PASS."""
+    violations: list[str] = []
+    if require_eos is not None:
+        required, total = require_eos
+        if sample_count != total:
+            raise ValueError(
+                f"require-eos total {total} does not match sample count {sample_count}"
+            )
+        if eos_hits < required:
+            violations.append(
+                f"require-eos: {eos_hits}/{sample_count} hits < required {required}/{total}"
+            )
+    for flag, allowed in fail_on:
+        count = flag_counts.get(flag, 0)
+        if count > allowed:
+            violations.append(f"fail-on {flag}: {count} samples flagged > allowed {allowed}")
+    return violations

@@ -242,3 +242,67 @@ def test_render_report_includes_checkpoint_metadata_and_samples():
     assert "coherence_prompt_overlap=0.00" in report
     assert "coherence_flags=missing_ending,weak_prompt_adherence" in report
     assert "Tom lost his red ball. He found it." in report
+
+
+def test_parse_eos_requirement_accepts_hits_over_total():
+    from examples.small_lm_eval_metrics import parse_eos_requirement
+
+    assert parse_eos_requirement("60/60") == (60, 60)
+
+
+def test_parse_eos_requirement_rejects_bad_format():
+    import pytest
+
+    from examples.small_lm_eval_metrics import parse_eos_requirement
+
+    with pytest.raises(ValueError, match="hits/total"):
+        parse_eos_requirement("60")
+
+
+def test_parse_fail_on_reads_flag_and_max():
+    from examples.small_lm_eval_metrics import parse_fail_on
+
+    assert parse_fail_on("repeated_trigram=5") == ("repeated_trigram", 5)
+
+
+def test_parse_fail_on_rejects_unknown_flag():
+    import pytest
+
+    from examples.small_lm_eval_metrics import parse_fail_on
+
+    with pytest.raises(ValueError, match="unknown flag"):
+        parse_fail_on("repatition=2")
+
+
+def test_check_gates_reports_require_eos_violation():
+    from examples.small_lm_eval_metrics import check_gates
+
+    violations = check_gates(58, 60, {}, require_eos=(60, 60), fail_on=[])
+
+    assert len(violations) == 1
+    assert "require-eos" in violations[0]
+    assert check_gates(60, 60, {}, require_eos=(60, 60), fail_on=[]) == []
+
+
+def test_check_gates_fails_when_flag_exceeds_max():
+    from examples.small_lm_eval_metrics import check_gates
+
+    violations = check_gates(
+        60, 60, {"repeated_trigram": 14}, fail_on=[("repeated_trigram", 5)]
+    )
+
+    assert len(violations) == 1
+    assert "repeated_trigram" in violations[0]
+    assert (
+        check_gates(60, 60, {"repeated_trigram": 5}, fail_on=[("repeated_trigram", 5)])
+        == []
+    )
+
+
+def test_check_gates_rejects_eos_total_mismatch():
+    import pytest
+
+    from examples.small_lm_eval_metrics import check_gates
+
+    with pytest.raises(ValueError, match="does not match sample count"):
+        check_gates(30, 36, {}, require_eos=(60, 60), fail_on=[])

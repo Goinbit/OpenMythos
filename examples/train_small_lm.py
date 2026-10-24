@@ -26,6 +26,7 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
+from examples.small_lm_data import StoryAlignedDataset, collect_stories, dedup_stories
 from examples.small_lm_text import clean_text_artifacts
 from open_mythos import MythosConfig, OpenMythos
 
@@ -184,6 +185,9 @@ def save_checkpoint(
     append_eos: bool,
     eos_loss_weight: float,
     clean_text: bool = True,
+    packing: str = "stream",
+    pair_mix: float = 0.0,
+    dedup_8gram: bool = False,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -198,10 +202,47 @@ def save_checkpoint(
             "append_eos": append_eos,
             "eos_loss_weight": eos_loss_weight,
             "clean_text": clean_text,
+            "packing": packing,
+            "pair_mix": pair_mix,
+            "dedup_8gram": dedup_8gram,
         },
         path,
     )
     print(f"[saved] {path} (step={step}, loss={loss:.4f})")
+
+
+def train_stats(train_ds, packing: str) -> str:
+    """Describe the train split; story datasets have no single token buffer."""
+    if packing == "story":
+        return f"train windows={len(train_ds):,}"
+    return f"train tokens={train_ds.data.numel():,} pairs={len(train_ds):,}"
+
+
+def compute_loss(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    vocab_size: int,
+    class_weights: torch.Tensor | None,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Cross-entropy with optional per-token mask (pair/pad targets excluded).
+
+    With ``mask=None`` or all-ones this equals plain weighted
+    ``F.cross_entropy`` mean reduction exactly.
+    """
+    flat_logits = logits.reshape(-1, vocab_size)
+    flat_targets = targets.reshape(-1)
+    if mask is None:
+        return F.cross_entropy(flat_logits, flat_targets, weight=class_weights)
+    per_token = F.cross_entropy(
+        flat_logits, flat_targets, weight=class_weights, reduction="none"
+    )
+    flat_mask = mask.reshape(-1).to(per_token.dtype)
+    if class_weights is not None:
+        target_weights = class_weights[flat_targets]
+    else:
+        target_weights = torch.ones_like(per_token)
+    return (per_token * flat_mask).sum() / (flat_mask * target_weights).sum()
 
 
 def build_loss_weights(
@@ -323,6 +364,32 @@ def parse_args() -> argparse.Namespace:
         help="disable deterministic cleanup of mojibake punctuation before tokenizing",
     )
     parser.add_argument(
+        "--packing",
+        choices=["stream", "story"],
+        default="stream",
+        help=(
+            "stream: continuous token packing (legacy); story: one story per "
+            "window starting at a story boundary"
+        ),
+    )
+    parser.add_argument(
+        "--pair-mix",
+        type=float,
+        default=0.0,
+        help=(
+            "fraction of story windows whose opening targets are masked "
+            "(continuation-pair training); requires --packing story"
+        ),
+    )
+    parser.add_argument(
+        "--dedup-8gram",
+        action="store_true",
+        help=(
+            "drop template stories (exact duplicates or shared 8-token "
+            "openings); requires --packing story"
+        ),
+    )
+    parser.add_argument(
         "--amp",
         action="store_true",
         help="use CUDA autocast + GradScaler when training on cuda",
@@ -352,6 +419,12 @@ def main() -> None:
     cfg = build_config(vocab_size, args.seq_len)
     append_eos = not args.no_append_eos
     clean_text = not args.no_clean_text
+    packing = args.packing
+    pair_mix = args.pair_mix
+    if packing != "story" and (pair_mix != 0.0 or args.dedup_8gram):
+        raise ValueError("--pair-mix/--dedup-8gram require --packing story")
+    if not 0.0 <= pair_mix <= 1.0:
+        raise ValueError(f"--pair-mix must be within [0, 1], got {pair_mix}")
     if not append_eos and args.eos_loss_weight != 1.0:
         raise ValueError("--eos-loss-weight > 1 requires EOS labels; remove --no-append-eos")
     loss_weights = build_loss_weights(
@@ -365,20 +438,38 @@ def main() -> None:
     print(
         f"[setup] dataset={args.dataset} config={args.dataset_config or 'none'} "
         f"append_eos={append_eos} eos_loss_weight={args.eos_loss_weight} "
-        f"clean_text={clean_text}"
+        f"clean_text={clean_text} packing={packing} pair_mix={pair_mix} "
+        f"dedup_8gram={args.dedup_8gram}"
     )
     raw_train = load_text_dataset(args.dataset, args.dataset_config, args.train_split)
     raw_eval = load_text_dataset(args.dataset, args.dataset_config, args.eval_split)
-    train_ds = PackedTextDataset(
-        raw_train,
-        tokenizer,
-        args.seq_len,
-        args.train_tokens,
-        args.text_field,
-        tokenizer.eos_token_id,
-        append_eos,
-        clean_text=clean_text,
-    )
+    if packing == "story":
+        stories = collect_stories(
+            raw_train,
+            tokenizer,
+            args.train_tokens,
+            args.text_field,
+            tokenizer.eos_token_id,
+            append_eos,
+            clean_text=clean_text,
+        )
+        stories, dropped = dedup_stories(stories, enabled=args.dedup_8gram)
+        if args.dedup_8gram:
+            print(f"[setup] dedup-8gram dropped {dropped} template stories")
+        train_ds = StoryAlignedDataset(
+            stories, args.seq_len, pair_mix, tokenizer.eos_token_id
+        )
+    else:
+        train_ds = PackedTextDataset(
+            raw_train,
+            tokenizer,
+            args.seq_len,
+            args.train_tokens,
+            args.text_field,
+            tokenizer.eos_token_id,
+            append_eos,
+            clean_text=clean_text,
+        )
     eval_ds = PackedTextDataset(
         raw_eval,
         tokenizer,
@@ -390,7 +481,7 @@ def main() -> None:
         clean_text=clean_text,
     )
     print(
-        f"[setup] train tokens={train_ds.data.numel():,} pairs={len(train_ds):,} | "
+        f"[setup] {train_stats(train_ds, packing)} | "
         f"eval tokens={eval_ds.data.numel():,} pairs={len(eval_ds):,}"
     )
 
@@ -423,6 +514,12 @@ def main() -> None:
             raise ValueError(
                 "resume checkpoint eos_loss_weight does not match current run"
             )
+        if "packing" in ckpt and str(ckpt["packing"]) != packing:
+            raise ValueError("resume checkpoint packing does not match current run")
+        if "pair_mix" in ckpt and float(ckpt["pair_mix"]) != pair_mix:
+            raise ValueError("resume checkpoint pair_mix does not match current run")
+        if "dedup_8gram" in ckpt and bool(ckpt["dedup_8gram"]) != args.dedup_8gram:
+            raise ValueError("resume checkpoint dedup_8gram does not match current run")
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         if "scaler" in ckpt:
@@ -444,6 +541,14 @@ def main() -> None:
             raise ValueError(
                 "init-from checkpoint eos_loss_weight does not match current run"
             )
+        if "packing" in ckpt and str(ckpt["packing"]) != packing:
+            raise ValueError("init-from checkpoint packing does not match current run")
+        if "pair_mix" in ckpt and float(ckpt["pair_mix"]) != pair_mix:
+            raise ValueError("init-from checkpoint pair_mix does not match current run")
+        if "dedup_8gram" in ckpt and bool(ckpt["dedup_8gram"]) != args.dedup_8gram:
+            raise ValueError(
+                "init-from checkpoint dedup_8gram does not match current run"
+            )
         result = load_matching_model_weights(model, ckpt["model"])
         start_step = int(ckpt.get("step", 0))
         last_loss = float(ckpt.get("loss", 0.0))
@@ -462,21 +567,21 @@ def main() -> None:
     last_saved_step = -1
     for step in range(start_step + 1, final_step + 1):
         try:
-            x, y = next(data_iter)
+            batch = next(data_iter)
         except StopIteration:
             data_iter = iter(train_loader)
-            x, y = next(data_iter)
+            batch = next(data_iter)
+        x, y = batch[0], batch[1]
+        mask = batch[2] if len(batch) == 3 else None
         x = x.to(device)
         y = y.to(device)
+        if mask is not None:
+            mask = mask.to(device)
 
         optimizer.zero_grad(set_to_none=True)
         with autocast_context(use_amp):
             logits = model(x, n_loops=args.n_loops)
-            loss = F.cross_entropy(
-                logits.reshape(-1, vocab_size),
-                y.reshape(-1),
-                weight=loss_weights,
-            )
+            loss = compute_loss(logits, y, vocab_size, loss_weights, mask)
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
@@ -510,6 +615,9 @@ def main() -> None:
                 append_eos,
                 args.eos_loss_weight,
                 clean_text,
+                packing,
+                pair_mix,
+                args.dedup_8gram,
             )
             last_saved_step = step
 
@@ -526,6 +634,9 @@ def main() -> None:
             append_eos,
             args.eos_loss_weight,
             clean_text,
+            packing,
+            pair_mix,
+            args.dedup_8gram,
         )
 
 
