@@ -372,7 +372,37 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · 训练成果盘点 + small LM 迭代计划
+## 2026-10-24 · 迭代计划 T1+T2+T4 实施(story packing / dedup / eval gates)
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `326adcf` + 本日志条目(docs 提交)
+**Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T1/T2/T4 交付
+
+### ✅ 完成
+- **T1 续写对齐**:`examples/small_lm_data.py` 新增 `split_opening`(句边界切 opening,首句过短延伸第二句)/ `collect_stories` / `StoryAlignedDataset`(一故事一窗口、窗口起于故事边界、pair 窗口 mask 开口目标、pad 目标 mask、Bresenham 确定性 pair_mix)
+- **T2 数据去重**:`dedup_stories`(精确重复 + 共享 8-token 开头的模板故事,保守阈值);实测 TinyStories 5k tokens 即丢 18 个模板,全量加载丢 1225 个
+- **训练侧**:`train_small_lm.py` 新增 `--packing story` / `--pair-mix` / `--dedup-8gram`;`compute_loss` 支持 per-token mask(mask≡1 时与 `F.cross_entropy` mean 精确等价,已测);checkpoint 记录 `packing/pair_mix/dedup_8gram`,resume/init-from 一致性校验(旧 ckpt 无字段可迁移,同 append_eos 模式)
+- **T4 评估 gate**:`small_lm_eval_metrics.py` 新增 `parse_eos_requirement("60/60")` / `parse_fail_on("flag=N")` / `check_gates`;`evaluate_small_lm_generations.py` 新增 `--require-eos` / `--fail-on`(可重复),未达标 `[gate] FAIL` 退出码 1,通过 `[gate] PASS` 退出码 0;未知 flag 名直接报错(防 typo 静默)
+- 新增 `docs/runbooks/tinystories_v7_story_aligned.md`(preflight→冒烟→全量→gate 验收→归档 checklist);`docs/small_lm_iteration_plan.md` 标注实施状态
+- **冒烟发现并修复**:`StoryAlignedDataset` 无 `.data` 属性导致 setup 打印崩溃(单测未覆盖 main() 打印路径)——抽出 `train_stats()` + `test_regression_story_dataset_train_stats_never_touches_data_buffer`
+- 启动 v7 续训:5k steps MPS,`--init-from v6.1 --packing story --pair-mix 0.5 --dedup-8gram`,输出 `checkpoints/tinystories_mps_small_mythos_seq384_story_v7.pt`,日志 `runs/train_v7_story.log`(nohup,PID 56639)
+
+### 📊 测试变化
+- before: 246 passed / 0 skipped
+- after: **264 passed** / 0 skipped
+- 新增: story data/pair mask/dedup/masked loss/checkpoint metadata + eval gate 解析与判定 + 1 个 smoke 回归,共 +18
+- `ruff check .` → All checks passed
+- 冒烟:CPU 2 步 story 路径 ✓ · gate FAIL→exit 1 / PASS→exit 0 ✓ · checkpoint metadata `packing=story pair_mix=0.5 dedup_8gram=True` ✓
+
+### 🔑 关键决策 / 发现
+- **HF 数据集下载卡死在 Xet 后端**(两次零进展,API 却 200):`HF_HUB_DISABLE_XET=1` 绕过即恢复。本机 HF 联网抖动已是第二次(`.learnings/ERRORS.md` 有 tokenizer 先例),该变量应进长期命令模板
+- pair 窗口 mask 语义:y[0..opening_len-2] 屏蔽(开口内部),首个续写 token 与 EOS 保留——正好对齐评估条件"给定开头续写"
+- 窗口内容全部未 mask 时 `compute_loss` 分母不变式成立(每样本 ≥1 个未屏蔽目标),无需运行时 guard
+- 冒烟再次证明"单测过 ≠ 端到端过":main() 打印路径只有真跑才能暴露
+
+### 🧭 留到下阶段
+- v7 训练完成后跑 runbook §4 gate 验收(一条命令),对照 T1/T2 验收线(weak ≤ 15、missing_ending ≤ 15、repeated_trigram ≤ 5、EOS 60/60 红线)
+- T3(seq512 / 扩容 35M)按计划待 T1/T2 结果
+- 66+ 提交已在 fork,上游 PR 仍待用户决策
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — 训练轨道规划
