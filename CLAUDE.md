@@ -253,7 +253,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
 | small LM 本机轨道(计划外) | ✅ 完成 | 训练/生成/评估/调参/对比 CLI 全套 · 8 模型卡(v0→v6.1)· 2 runbook |
-| Q 量化轨道(计划外,BitNet b1.58) | 🟡 Q1 完成 | BitLinear 原语 + QuantConfig 已交付;Q2 架构接入待启动([计划](docs/bitnet_quantization_plan.md)) |
+| Q 量化轨道(计划外,BitNet b1.58) | 🟡 Q1-Q2 完成 | BitLinear 进模型(attention/experts/FFN)+ quant metadata 全链路;Q3 QAT 训练待启动([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
 
@@ -373,7 +373,33 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · BitNet b1.58 量化轨道启动(Q1 BitLinear 原语交付)
+## 2026-10-24 · Q2 架构接入交付(BitLinear 进模型 + quant metadata 全链路)
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — Q 轨道 Q2
+
+### ✅ 完成
+- **BitLinear 改为 `nn.Linear` 子类**:state-dict 键/参数形状与 Linear 完全一致 → FP checkpoint 可直接 warm-start 进 W1.58 模型(Q3 阶梯 a 前提);`_init_weights` isinstance 扫描自动覆盖,删掉手写初始化
+- **`build_linear(cfg, in, out)` 工厂**接线:GQA wq/wk/wv/wo、MLA 6 投影、Expert gate/up/down(新增可选 cfg 参数)、MoE routed+shared experts;router/head/embed/LoRA/LTI/RMSNorm 保持 FP(模块类型映射测试固化)
+- **quant metadata 全链路**:`quant_mode`/`quant_group_size` 作为独立 checkpoint 字段(不动 config dict → 旧 checkpoint resume 等值校验零破坏);resume/init-from 一致性守卫;`--quant`/`--quant-group-size` CLI;`config_from_checkpoint` 共享 helper(生成/评估按 metadata 重建量化模型,legacy ckpt 回退 FP)
+- **决策修正(计划文档 §1.1)**:LoRA 在 OpenMythos 是输出残差(`trans_out + lora(...)`),不挂具体 Linear,无可合并权重 → 保持 FP,放弃"联合量化"设想
+- 冒烟:CPU 2 步 w158 训练 → metadata 落盘;重建出 45 个 BitLinear 模块;v6.1 旧 checkpoint 兼容加载
+
+### 📊 测试变化
+- before: 282 passed / 0 skipped
+- after: **289 passed** / 0 skipped
+- 新增 +7:工厂选择/W1.58 模型模块放置映射/none 零 BitLinear/同 seed FP-W1.58 双胞胎 logits 相异且有限/FP state_dict 直接载入 W1.58/quant metadata 存取/config_from_checkpoint 重建
+- mypy 0 errors / 35 files · ruff 干净(自动修 1 处冗余导入)· 覆盖率 97% 保持(quant.py 93%)
+
+### 🔑 关键决策 / 发现
+- **继承 nn.Linear 是接入关键**:一次重构同时解决初始化一致性、state_dict 兼容(warm-start)、isinstance 扫描三件事,模型侧零适配成本
+- **quant 元数据独立于 config dict**:config dict 严格等值是 resume 的既有契约,往里加键会静默弄坏所有旧 checkpoint 的续训;独立字段 + "有则校验"模式与 append_eos/packing 一脉相承
+- LoRA "联合量化"设想在真实架构上不成立——计划期的假设要对着代码验证再落验收
+
+### 🧭 留到下阶段
+- Q3 QAT 双阶梯训练:v6.1 `--init-from --quant w158` 微调 5k steps(链路已就绪)→ 从头 QAT 对照;验收走 T4 gate(val loss Δ ≤ 0.10、EOS 60/60 红线、halt 分布偏移 ≤ 0.1)
+- Q4 存储兑现(4-trit 打包 + γ 逐层落盘)
+- T3b small LM 扩容决策仍待用户确认
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — Q 轨道规划 + Q1 交付

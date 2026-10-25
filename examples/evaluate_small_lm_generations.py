@@ -10,7 +10,11 @@ from pathlib import Path
 import torch
 from transformers import AutoTokenizer
 
-from examples.generate_small_lm import generate_tokens, trim_after_sentences
+from examples.generate_small_lm import (
+    config_from_checkpoint,
+    generate_tokens,
+    trim_after_sentences,
+)
 from examples.small_lm_eval_metrics import (
     check_gates,
     compute_coherence_metrics,
@@ -21,7 +25,7 @@ from examples.small_lm_eval_metrics import (
     render_quality_summary,
 )
 from examples.small_lm_text import clean_text_artifacts
-from open_mythos import MythosConfig, OpenMythos
+from open_mythos import OpenMythos
 
 DEFAULT_PROMPTS = [
     "Once upon a time",
@@ -276,7 +280,7 @@ def parse_args() -> argparse.Namespace:
 def load_model(checkpoint: Path, device: torch.device):
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
     tokenizer = AutoTokenizer.from_pretrained(ckpt.get("tokenizer", "gpt2"))
-    cfg = MythosConfig(**ckpt["config"])
+    cfg = config_from_checkpoint(ckpt)
     model = OpenMythos(cfg)
     model.load_state_dict(ckpt["model"])
     model.to(device)

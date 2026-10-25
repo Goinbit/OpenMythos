@@ -19,7 +19,7 @@
 
 ## 1. OpenMythos 特有技术决策
 
-1. **LoRA 深度适配器联合量化**:有效权重是按 loop t 合并的 `W + Δ_t`;QAT 时对合并结果做 STE 量化,LoRA 主权重保持 FP
+1. **LoRA 深度适配器保持 FP(决策修正)**:原设想"合并 `W + Δ_t` 联合量化",但 OpenMythos 的 LoRA 是**输出残差**(`trans_out + lora(trans_out, t)`),不挂在具体 Linear 上,无可合并权重——修正为 LoRA 模块整体保持 FP
 2. **ACT halting 新 gate**:量化噪声会移动 halt 分布;验收要求 halt 步分布偏移 ≤ 0.1 步
 3. **MoE 分界**:expert FFN(参数大头)量化;router/gate 保持 FP(离散决策敏感)
 4. **循环深度红利**:RecurrentBlock 权重被循环复用,量化收益按迭代次数放大
@@ -33,11 +33,14 @@
 - 验收(全部达成):值域 ∈{-1,0,1} ✓;disabled 与 `nn.Linear` 逐位相等 ✓;同上游梯度下 STE 参数梯度与 Linear 一致 ✓;零权重 γ clamp 不产生 NaN ✓;`test_bitlinear_mlp_trains_loss_decreases`(QAT 端到端训练通路)✓
 - 测试 264 → **282**(+18);mypy 0 errors / 35 files;ruff 干净;覆盖率 97% 保持(quant.py 91%)
 
-### Q2 · 架构接入 — 未开始
+### Q2 · 架构接入 — ✅ 完成(2026-10-24)
 
-- factory 按 `cfg.quant.mode` 切换 Linear→BitLinear;量化范围:attn QKV/O、MoE 专家、FFN;**保持 FP**:embedding、lm_head、router、LoRA、LTI、RMSNorm
-- LoRA 联合量化(决策 §1.1);checkpoint metadata 加 `quant` 字段 + resume/init-from 校验(同 `packing` 模式)
-- 验收:264+18 测试不回退;7 个 variants 预设构造通过;`quant=none` 路径与现状数值等价
+- `BitLinear` 改为 **`nn.Linear` 子类**:state-dict 键与参数形状与 Linear 完全一致 → FP checkpoint 可直接 warm-start 进 W1.58 模型(Q3 阶梯 a 的前提);`OpenMythos._init_weights` 的 isinstance 扫描自动覆盖
+- `build_linear(cfg, in, out)` 工厂接入:GQA 4 处 / MLA 6 处 / Expert 3 处(gate/up/down,经可选 cfg 参数)/ MoE routed+shared experts
+- **保持 FP**:embedding、lm_head(权重绑定)、MoE router、LoRA、LTI、RMSNorm(模块类型映射测试固化)
+- checkpoint metadata:`quant_mode`/`quant_group_size` 独立字段(不动 config dict,旧 checkpoint 的 resume 等值校验零破坏);resume/init-from 一致性守卫;`train_small_lm.py` 新增 `--quant` / `--quant-group-size`;`generate_small_lm.config_from_checkpoint` 共享 helper——生成/评估侧按 metadata 重建量化模型
+- 验收(全部达成):289 tests(282+7 新增)✓;7 个 variants 预设构造通过 ✓;`quant=none` 工厂返回原生 Linear(数值路径零改动)✓;同 seed FP/W1.58 双胞胎模型 logits 相异(量化确实生效)且 W1.58 前向有限 ✓
+- 冒烟:CPU 2 步 w158 训练 → metadata `w158/64` 落盘;按 metadata 重建出 45 个 BitLinear 模块;v6.1 旧 checkpoint 兼容加载(quant=none)
 
 ### Q3 · QAT 训练双阶梯 — 未开始
 

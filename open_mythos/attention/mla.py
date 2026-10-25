@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from open_mythos.config import MythosConfig
 from open_mythos.kv_cache import StaticKVCache
 from open_mythos.primitives.norm import RMSNorm
+from open_mythos.primitives.quant import build_linear
 from open_mythos.primitives.rope import apply_rope
 
 
@@ -58,27 +59,27 @@ class MLAttention(nn.Module):
         self.q_head_dim = cfg.qk_nope_head_dim + cfg.qk_rope_head_dim
 
         # Q compression
-        self.q_down = nn.Linear(cfg.dim, cfg.q_lora_rank, bias=False)
+        self.q_down = build_linear(cfg, cfg.dim, cfg.q_lora_rank)
         self.q_norm = RMSNorm(cfg.q_lora_rank)
-        self.q_up_nope = nn.Linear(
-            cfg.q_lora_rank, cfg.n_heads * cfg.qk_nope_head_dim, bias=False
+        self.q_up_nope = build_linear(
+            cfg, cfg.q_lora_rank, cfg.n_heads * cfg.qk_nope_head_dim
         )
-        self.q_up_rope = nn.Linear(
-            cfg.q_lora_rank, cfg.n_heads * cfg.qk_rope_head_dim, bias=False
+        self.q_up_rope = build_linear(
+            cfg, cfg.q_lora_rank, cfg.n_heads * cfg.qk_rope_head_dim
         )
 
         # KV compression: output is [c_kv | k_rope_raw] concatenated
-        self.kv_down = nn.Linear(
-            cfg.dim, cfg.kv_lora_rank + cfg.qk_rope_head_dim, bias=False
+        self.kv_down = build_linear(
+            cfg, cfg.dim, cfg.kv_lora_rank + cfg.qk_rope_head_dim
         )
         self.kv_norm = RMSNorm(cfg.kv_lora_rank)
-        self.kv_up = nn.Linear(
+        self.kv_up = build_linear(
+            cfg,
             cfg.kv_lora_rank,
             cfg.n_heads * (cfg.qk_nope_head_dim + cfg.v_head_dim),
-            bias=False,
         )
 
-        self.wo = nn.Linear(cfg.n_heads * cfg.v_head_dim, cfg.dim, bias=False)
+        self.wo = build_linear(cfg, cfg.n_heads * cfg.v_head_dim, cfg.dim)
         self.attn_drop = nn.Dropout(cfg.dropout)
 
         # Stage 4.3 (P4.3): MLA applies RoPE only on qk_rope_head_dim channels.

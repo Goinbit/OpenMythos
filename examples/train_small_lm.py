@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import time
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,7 @@ from transformers import AutoTokenizer
 from examples.small_lm_data import StoryAlignedDataset, collect_stories, dedup_stories
 from examples.small_lm_text import clean_text_artifacts
 from open_mythos import MythosConfig, OpenMythos
+from open_mythos.config import QuantConfig
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,8 @@ def save_checkpoint(
     packing: str = "stream",
     pair_mix: float = 0.0,
     dedup_8gram: bool = False,
+    quant_mode: str = "none",
+    quant_group_size: int = 128,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -205,6 +208,8 @@ def save_checkpoint(
             "packing": packing,
             "pair_mix": pair_mix,
             "dedup_8gram": dedup_8gram,
+            "quant_mode": quant_mode,
+            "quant_group_size": quant_group_size,
         },
         path,
     )
@@ -390,6 +395,22 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--quant",
+        choices=["none", "w158"],
+        default="none",
+        help=(
+            "weight quantization: w158 = BitNet b1.58 ternary weights with "
+            "straight-through QAT (BitLinear on attention/experts/FFN; "
+            "embeddings, head, router, and LoRA stay full precision)"
+        ),
+    )
+    parser.add_argument(
+        "--quant-group-size",
+        type=int,
+        default=128,
+        help="activation-quant group width reserved for the A8 stage",
+    )
+    parser.add_argument(
         "--amp",
         action="store_true",
         help="use CUDA autocast + GradScaler when training on cuda",
@@ -417,6 +438,9 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     vocab_size = len(tokenizer)
     cfg = build_config(vocab_size, args.seq_len)
+    cfg = replace(
+        cfg, quant=QuantConfig(mode=args.quant, group_size=args.quant_group_size)
+    )
     append_eos = not args.no_append_eos
     clean_text = not args.no_clean_text
     packing = args.packing
@@ -439,7 +463,7 @@ def main() -> None:
         f"[setup] dataset={args.dataset} config={args.dataset_config or 'none'} "
         f"append_eos={append_eos} eos_loss_weight={args.eos_loss_weight} "
         f"clean_text={clean_text} packing={packing} pair_mix={pair_mix} "
-        f"dedup_8gram={args.dedup_8gram}"
+        f"dedup_8gram={args.dedup_8gram} quant={args.quant}"
     )
     raw_train = load_text_dataset(args.dataset, args.dataset_config, args.train_split)
     raw_eval = load_text_dataset(args.dataset, args.dataset_config, args.eval_split)
@@ -520,6 +544,15 @@ def main() -> None:
             raise ValueError("resume checkpoint pair_mix does not match current run")
         if "dedup_8gram" in ckpt and bool(ckpt["dedup_8gram"]) != args.dedup_8gram:
             raise ValueError("resume checkpoint dedup_8gram does not match current run")
+        if "quant_mode" in ckpt and str(ckpt["quant_mode"]) != args.quant:
+            raise ValueError("resume checkpoint quant_mode does not match current run")
+        if (
+            "quant_group_size" in ckpt
+            and int(ckpt["quant_group_size"]) != args.quant_group_size
+        ):
+            raise ValueError(
+                "resume checkpoint quant_group_size does not match current run"
+            )
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         if "scaler" in ckpt:
@@ -548,6 +581,17 @@ def main() -> None:
         if "dedup_8gram" in ckpt and bool(ckpt["dedup_8gram"]) != args.dedup_8gram:
             raise ValueError(
                 "init-from checkpoint dedup_8gram does not match current run"
+            )
+        if "quant_mode" in ckpt and str(ckpt["quant_mode"]) != args.quant:
+            raise ValueError(
+                "init-from checkpoint quant_mode does not match current run"
+            )
+        if (
+            "quant_group_size" in ckpt
+            and int(ckpt["quant_group_size"]) != args.quant_group_size
+        ):
+            raise ValueError(
+                "init-from checkpoint quant_group_size does not match current run"
             )
         result = load_matching_model_weights(model, ckpt["model"])
         start_step = int(ckpt.get("step", 0))
@@ -618,6 +662,8 @@ def main() -> None:
                 packing,
                 pair_mix,
                 args.dedup_8gram,
+                args.quant,
+                args.quant_group_size,
             )
             last_saved_step = step
 
@@ -637,6 +683,8 @@ def main() -> None:
             packing,
             pair_mix,
             args.dedup_8gram,
+            args.quant,
+            args.quant_group_size,
         )
 
 

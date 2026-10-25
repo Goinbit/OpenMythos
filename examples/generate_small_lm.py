@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
 import torch
@@ -11,9 +12,28 @@ from transformers import AutoTokenizer
 
 from examples.small_lm_text import clean_text_artifacts
 from open_mythos import MythosConfig, OpenMythos, StaticKVCache
+from open_mythos.config import QuantConfig
 
 SENTENCE_ENDINGS = {".", "!", "?"}
 CLOSING_PUNCTUATION = {'"', "'", "”", "’", ")", "]"}
+
+
+def config_from_checkpoint(ckpt: dict) -> MythosConfig:
+    """Build the model config, honoring quant metadata written by train_small_lm.
+
+    Legacy checkpoints without ``quant_mode`` construct full-precision models.
+    """
+    cfg = MythosConfig(**ckpt["config"])
+    quant_mode = str(ckpt.get("quant_mode", "none"))
+    if quant_mode != "none":
+        cfg = replace(
+            cfg,
+            quant=QuantConfig(
+                mode=quant_mode,
+                group_size=int(ckpt.get("quant_group_size", 128)),
+            ),
+        )
+    return cfg
 
 
 def apply_repetition_penalty(
@@ -205,7 +225,7 @@ def main() -> None:
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     tokenizer_id = ckpt.get("tokenizer", "gpt2")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
-    cfg = MythosConfig(**ckpt["config"])
+    cfg = config_from_checkpoint(ckpt)
     model = OpenMythos(cfg)
     model.load_state_dict(ckpt["model"])
     model.to(device)

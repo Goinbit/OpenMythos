@@ -152,11 +152,11 @@ class MoEFFN(nn.Module):
         self.router = build_router(cfg)
 
         self.routed_experts = nn.ModuleList(
-            [Expert(cfg.dim, cfg.expert_dim) for _ in range(cfg.n_experts)]
+            [Expert(cfg.dim, cfg.expert_dim, cfg=cfg) for _ in range(cfg.n_experts)]
         )
         self.shared_experts = nn.ModuleList(
             [
-                Expert(cfg.dim, cfg.expert_dim * cfg.n_experts_per_tok)
+                Expert(cfg.dim, cfg.expert_dim * cfg.n_experts_per_tok, cfg=cfg)
                 for _ in range(self.n_shared)
             ]
         )

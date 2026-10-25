@@ -3,6 +3,7 @@ from open_mythos.primitives.quant import (
     BitLinear,
     absmax_act_quant,
     absmean_quantize,
+    build_linear,
 )
 from open_mythos.primitives.rope import (
     precompute_rope_freqs,
@@ -14,6 +15,7 @@ from open_mythos.primitives.expert import Expert
 __all__ = [
     "RMSNorm",
     "BitLinear",
+    "build_linear",
     "absmax_act_quant",
     "absmean_quantize",
     "precompute_rope_freqs",

@@ -10,13 +10,13 @@ gradients flowing to the full-precision master weights during QAT.
 
 from __future__ import annotations
 
-import math
-
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-__all__ = ["absmean_quantize", "absmax_act_quant", "BitLinear"]
+from open_mythos.config import MythosConfig
+
+__all__ = ["absmean_quantize", "absmax_act_quant", "BitLinear", "build_linear"]
 
 _ABMEAN_EPS = 1e-8
 _ACT_QUANT_EPS = 1e-8
@@ -64,7 +64,7 @@ def absmax_act_quant(
     return q.reshape_as(x), scale.reshape(*x.shape[:-1], -1)
 
 
-class BitLinear(nn.Module):
+class BitLinear(nn.Linear):
     """Linear layer with BitNet b1.58 ternary-weight QAT (W1.58).
 
     The full-precision ``weight`` is the trainable master copy. Forward
@@ -73,6 +73,11 @@ class BitLinear(nn.Module):
     exactly while the forward sees the ternary approximation.
     ``enabled=False`` runs the plain linear path (parity tests / kill
     switch).
+
+    Subclasses ``nn.Linear`` on purpose: state-dict keys and parameter
+    shapes stay identical, so a full-precision checkpoint loads into a
+    W1.58 model unchanged (warm-start path), and model-wide ``isinstance``
+    init passes cover BitLinear for free.
     """
 
     def __init__(
@@ -82,21 +87,8 @@ class BitLinear(nn.Module):
         bias: bool = False,
         enabled: bool = True,
     ) -> None:
-        super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
+        super().__init__(in_features, out_features, bias=bias)
         self.enabled = enabled
-        self.weight = nn.Parameter(torch.empty(out_features, in_features))
-        if bias:
-            self.bias = nn.Parameter(torch.zeros(out_features))
-        else:
-            self.register_parameter("bias", None)
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
 
     def quantized_weight(self) -> tuple[Tensor, Tensor]:
         """Return ``(ternary, gamma)``; ``gamma`` must be exported with the payload."""
@@ -117,3 +109,20 @@ class BitLinear(nn.Module):
             f"out_features={self.out_features}, "
             f"bias={self.bias is not None}, quant={mode}"
         )
+
+
+def build_linear(
+    cfg: MythosConfig,
+    in_features: int,
+    out_features: int,
+    bias: bool = False,
+) -> nn.Linear:
+    """Linear factory: ``BitLinear`` under ``quant_mode="w158"``, else plain.
+
+    Quantization placement rule: call this for attention projections, MoE
+    experts, and FFN linears. Never for embeddings, the LM head, the MoE
+    router, LoRA adapters, or LTI injection — those stay full precision.
+    """
+    if cfg.quant.mode == "w158":
+        return BitLinear(in_features, out_features, bias=bias)
+    return nn.Linear(in_features, out_features, bias=bias)

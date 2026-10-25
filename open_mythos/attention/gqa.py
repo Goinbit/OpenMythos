@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from open_mythos.config import MythosConfig
 from open_mythos.kv_cache import StaticKVCache
+from open_mythos.primitives.quant import build_linear
 from open_mythos.primitives.rope import apply_rope
 
 
@@ -38,10 +39,10 @@ class GQAttention(nn.Module):
         self.head_dim = cfg.dim // cfg.n_heads
         self.groups = cfg.n_heads // cfg.n_kv_heads
 
-        self.wq = nn.Linear(cfg.dim, cfg.n_heads * self.head_dim, bias=False)
-        self.wk = nn.Linear(cfg.dim, cfg.n_kv_heads * self.head_dim, bias=False)
-        self.wv = nn.Linear(cfg.dim, cfg.n_kv_heads * self.head_dim, bias=False)
-        self.wo = nn.Linear(cfg.n_heads * self.head_dim, cfg.dim, bias=False)
+        self.wq = build_linear(cfg, cfg.dim, cfg.n_heads * self.head_dim)
+        self.wk = build_linear(cfg, cfg.dim, cfg.n_kv_heads * self.head_dim)
+        self.wv = build_linear(cfg, cfg.dim, cfg.n_kv_heads * self.head_dim)
+        self.wo = build_linear(cfg, cfg.n_heads * self.head_dim, cfg.dim)
         self.attn_drop = nn.Dropout(cfg.dropout)
 
         # Stage 4.3 (P4.3): expose rope-dim for single-buffer precomputation.

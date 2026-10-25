@@ -363,3 +363,44 @@ def test_regression_story_dataset_train_stats_never_touches_data_buffer():
     ds = StoryAlignedDataset(stories, seq_len=5, pair_mix=0.0, eos_token_id=99)
 
     assert train_small_lm.train_stats(ds, "story") == "train windows=1"
+
+
+def test_save_checkpoint_records_quant_metadata(tmp_path):
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    checkpoint = tmp_path / "quant.pt"
+
+    save_checkpoint(
+        checkpoint,
+        model,
+        optimizer,
+        NoOpScaler(),
+        build_config(vocab_size=100, max_seq_len=8),
+        tokenizer="gpt2",
+        step=3,
+        loss=1.2,
+        append_eos=True,
+        eos_loss_weight=1.0,
+        quant_mode="w158",
+        quant_group_size=64,
+    )
+
+    ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    assert ckpt["quant_mode"] == "w158"
+    assert ckpt["quant_group_size"] == 64
+
+    default_ckpt = tmp_path / "plain.pt"
+    save_checkpoint(
+        default_ckpt,
+        model,
+        optimizer,
+        NoOpScaler(),
+        build_config(vocab_size=100, max_seq_len=8),
+        tokenizer="gpt2",
+        step=3,
+        loss=1.2,
+        append_eos=True,
+        eos_loss_weight=1.0,
+    )
+    plain = torch.load(default_ckpt, map_location="cpu", weights_only=False)
+    assert plain["quant_mode"] == "none"

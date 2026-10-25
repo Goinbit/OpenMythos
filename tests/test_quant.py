@@ -183,3 +183,92 @@ def test_config_rejects_w158_with_nonpositive_group_size():
 def test_config_rejects_mixed_flat_and_nested_quant_kwargs():
     with pytest.raises(TypeError, match="flat and nested"):
         MythosConfig(quant=QuantConfig(), quant_mode="w158")
+
+
+def _tiny_cfg(quant_mode: str):
+    return MythosConfig(
+        vocab_size=64,
+        dim=32,
+        max_seq_len=16,
+        prelude_layers=1,
+        coda_layers=1,
+        attn_type="gqa",
+        n_heads=4,
+        n_kv_heads=2,
+        n_experts=4,
+        n_shared_experts=1,
+        n_experts_per_tok=2,
+        expert_dim=16,
+        max_loop_iters=2,
+        lora_rank=4,
+        quant_mode=quant_mode,
+    )
+
+
+def test_build_linear_selects_bitlinear_under_w158():
+    from open_mythos.primitives.quant import build_linear
+
+    assert isinstance(build_linear(_tiny_cfg("w158"), 8, 4), BitLinear)
+    quant_free = build_linear(_tiny_cfg("none"), 8, 4)
+    assert type(quant_free) is torch.nn.Linear
+
+
+def test_w158_model_places_bitlinear_only_in_quantized_sites():
+    import torch.nn as nn
+
+    from open_mythos import OpenMythos
+
+    model = OpenMythos(_tiny_cfg("w158"))
+    quantized = {
+        name
+        for name, module in model.named_modules()
+        if isinstance(module, BitLinear)
+    }
+
+    assert quantized, "expected BitLinear modules under quant_mode=w158"
+    assert all(
+        name.startswith(("prelude", "coda", "recurrent.block"))
+        for name in quantized
+    )
+    # Head, router, and LoRA stay full precision by design.
+    assert "head" not in quantized
+    assert not any(".router." in name for name in quantized)
+    assert not any(".lora." in name for name in quantized)
+    assert type(model.head) is nn.Linear
+
+
+def test_none_model_contains_no_bitlinear():
+    from open_mythos import OpenMythos
+
+    model = OpenMythos(_tiny_cfg("none"))
+
+    assert not any(
+        isinstance(module, BitLinear) for module in model.modules()
+    )
+
+
+def test_w158_forward_is_finite_and_differs_from_fp_twin():
+    from open_mythos import OpenMythos
+
+    torch.manual_seed(0)
+    fp_model = OpenMythos(_tiny_cfg("none"))
+    torch.manual_seed(0)
+    quant_model = OpenMythos(_tiny_cfg("w158"))
+    x = torch.randint(0, 64, (2, 8))
+
+    with torch.no_grad():
+        fp_logits = fp_model(x)
+        quant_logits = quant_model(x)
+
+    assert quant_logits.shape == fp_logits.shape
+    assert torch.isfinite(quant_logits).all()
+    assert not torch.allclose(fp_logits, quant_logits)
+
+
+def test_fp_checkpoint_state_dict_loads_into_w158_model():
+    from open_mythos import OpenMythos
+
+    fp_model = OpenMythos(_tiny_cfg("none"))
+    quant_model = OpenMythos(_tiny_cfg("w158"))
+
+    quant_model.load_state_dict(fp_model.state_dict())

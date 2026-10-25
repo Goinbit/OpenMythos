@@ -40,7 +40,7 @@ class TransformerBlock(nn.Module):
         self.ffn_norm = RMSNorm(cfg.dim)
         # Stage 4.3 (P4.3): factory replaces hardcoded `if cfg.attn_type == "mla"`.
         self.attn = build_attention(cfg)
-        self.ffn = MoEFFN(cfg) if use_moe else Expert(cfg.dim, cfg.dim * 4 // 3)
+        self.ffn = MoEFFN(cfg) if use_moe else Expert(cfg.dim, cfg.dim * 4 // 3, cfg=cfg)
         self.resid_drop = nn.Dropout(cfg.dropout)
 
     def forward(

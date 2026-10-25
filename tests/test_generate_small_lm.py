@@ -117,3 +117,21 @@ def test_summarize_generation_stop_reports_max_seq_len_before_budget():
     )
 
     assert summary == (False, 248, "max_seq_len")
+
+
+def test_config_from_checkpoint_applies_quant_metadata():
+    from examples.generate_small_lm import config_from_checkpoint
+    from examples.train_small_lm import build_config, config_to_dict
+
+    base = config_to_dict(build_config(vocab_size=100, max_seq_len=8))
+    quant_ckpt = {
+        "config": dict(base),
+        "quant_mode": "w158",
+        "quant_group_size": 64,
+    }
+    cfg = config_from_checkpoint(quant_ckpt)
+    assert cfg.quant_mode == "w158"
+    assert cfg.quant_group_size == 64
+
+    legacy_cfg = config_from_checkpoint({"config": dict(base)})
+    assert legacy_cfg.quant_mode == "none"
