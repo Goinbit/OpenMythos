@@ -42,10 +42,28 @@
 - 验收(全部达成):289 tests(282+7 新增)✓;7 个 variants 预设构造通过 ✓;`quant=none` 工厂返回原生 Linear(数值路径零改动)✓;同 seed FP/W1.58 双胞胎模型 logits 相异(量化确实生效)且 W1.58 前向有限 ✓
 - 冒烟:CPU 2 步 w158 训练 → metadata `w158/64` 落盘;按 metadata 重建出 45 个 BitLinear 模块;v6.1 旧 checkpoint 兼容加载(quant=none)
 
-### Q3 · QAT 训练双阶梯 — 未开始
+### Q3 · QAT 训练双阶梯 — 阶梯 a 完成,未过 gate(2026-10-24);阶梯 b 按决策规则移交 3B+
 
-- 阶梯 a:v6.1 `--init-from` QAT 微调 5k steps;阶梯 b:从头 QAT 20k steps
-- 验收 gate(走 T4 工具一条命令):val loss Δ ≤ 0.10 vs 同 tokens FP16(15.8M 现实门槛;3B 才要求 parity);TinyStories gates 不回退(**EOS 60/60 红线**);ACT halt 分布偏移 ≤ 0.1 步;稀疏度报实测值(高斯 absmean 预期 ~31%,`test_absmean_quantize_sparsity_is_realistic_for_gaussian_weights` 已固化)
+**阶梯 a(v6.1 warm-start + W1.58 微调 5k steps,stream 数据配置,单变量隔离):**
+
+| 验收项 | 门槛 | 实测 | 判定 |
+|---|---|---|---|
+| val loss(stream,同协议) | Δ ≤ +0.10 vs v6.1(1.6227) | **1.8914(Δ +0.27)** | ❌ |
+| EOS(coherence-v2) | 60/60 红线 | 58/60 | ❌ |
+| weak_prompt_adherence | ≤ 29(基线不回退) | 39 | ❌ |
+| missing_ending | ≤ 27 | 30 | ❌ |
+| repeated_trigram | ≤ 14 | 15 | ❌ |
+| ACT halt 偏移 | ≤ 0.1 步 | 0.0(双方均饱和于末循环,区分度有限) | ✅* |
+| 稀疏度实测 | 报告值 | **33.9%**(理论 31-34% 吻合) | ✅ |
+
+报告:`runs/generation_eval_1792933993.md` · checkpoint 归档 `checkpoints/..._q_w158_v8_failed_gate.pt`
+量化损伤轨迹:初始 +0.65(纯 PTQ 损伤)→ 5k 步恢复至 +0.27(恢复曲线明显减速平台)。
+
+**结论:** 三值量化的真实代价在 15.8M 上远超可接受门槛。量化层仅 2.98M/15.86M(18.8%,embedding+head 主导且保持 FP),小模型无可让渡的冗余;与 b1.58 论文 parity 从 3B 起成立的结论一致。
+
+**阶梯 b(从头 QAT 20k steps)决策:不在 15.8M 上执行。** 理由:① 阶梯 a 的恢复平台(Δ+0.27)与容量分析均指向从头训练也无法收敛到 Δ≤0.10;② 3 GPU 小时换一个近似确定的负结果,违背 T1/T2 轮"避免在小模型上过度验证"的决策规则;③ Q 轨道的兑现点本来就是 3B+(Stage 5 GPU 到位后从头 QAT 训练)。管线(Q1/Q2)保持就绪状态。
+
+**新增工具:** `examples/measure_act_halt.py`(ACT halt 步测量,支持双 checkpoint 差分做 gate)+ 2 项单测
 
 ### Q4 · 存储与推理兑现 — 未开始
 

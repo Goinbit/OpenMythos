@@ -253,7 +253,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
 | small LM 本机轨道(计划外) | ✅ 完成 | 训练/生成/评估/调参/对比 CLI 全套 · 8 模型卡(v0→v6.1)· 2 runbook |
-| Q 量化轨道(计划外,BitNet b1.58) | 🟡 Q1-Q2 完成 | BitLinear 进模型(attention/experts/FFN)+ quant metadata 全链路;Q3 QAT 训练待启动([计划](docs/bitnet_quantization_plan.md)) |
+| Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
 
@@ -373,7 +373,31 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · Q2 架构接入交付(BitLinear 进模型 + quant metadata 全链路)
+## 2026-10-24 · Q3 阶梯 a 验收未过(量化代价定案),阶梯 b 移交 3B+
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — Q 轨道 Q3
+
+### ✅ 完成
+- **阶梯 a(v6.1 warm-start + W1.58 微调 5k steps,stream 数据配置单变量隔离)**:val 1.6227 → 初始损伤 2.2778(+0.65,纯 PTQ 损伤)→ 5k 步恢复至 **1.8914(Δ+0.27)**,恢复曲线明显减速平台。checkpoint 归档 `..._q_w158_v8_failed_gate.pt`
+- **生成 gate 全 FAIL**(coherence-v2,报告 `runs/generation_eval_1792933993.md`):EOS 58/60(红线破)、weak 39(基线 29)、missing_ending 30(27)、repeated_trigram 15(14);overlap 0.36(0.44)、drift 12(8)
+- **ACT halt 偏移 0.0**(gate ✅,但双模型在合成输入上均饱和于末循环,区分度有限——如实记录);新增 `examples/measure_act_halt.py` + 2 单测(forward hook 捕获逐循环 halt 概率,支持双 checkpoint 差分)
+- **稀疏度实测 33.9%**(理论 31-34% 吻合);量化层确认仅 2.98M/15.86M(18.8%)
+- **阶梯 b 决策:不在 15.8M 执行**——恢复平台 + 容量分析指向从头训练也无法达 Δ≤0.10;3 GPU 小时换近似确定的负结果违背"避免在小模型上过度验证"规则;Q 轨道兑现点在 3B+(Stage 5),管线保持就绪
+
+### 📊 测试变化
+- before: 289 passed / 0 skipped
+- after: **291 passed** / 0 skipped(+2:halt step 首次越限/未越限语义)
+- mypy/ruff 干净
+
+### 🔑 关键决策 / 发现
+- **三值量化的真实代价在 15.8M 上定案:Δ+0.27 val(门槛 0.10 的 2.7 倍)+ 全部生成指标回退**。与 b1.58 论文 parity 从 3B 起成立的结论互证——小模型无可让渡冗余(embedding+head 占 81% 且按惯例保持 FP)
+- 阶梯 a 隔离变量设计(stream 配置与 v6.1 完全一致)使 val 偏移读数 = 纯量化成本,数据干净
+- halt 测量工具可用但合成 token 输入区分度不足;文本 prompt 变体留待需要时补
+
+### 🧭 留到下阶段
+- Q 轨道剩余价值在 Q4(存储兑现:4-trit 打包 + γ 落盘,对 w158 模型可用)与 Stage 5 的 3B QAT;15.8M 轨道不再投入训练时间
+- T3b small LM 扩容决策仍待用户确认(与 Q 轨道结论相互独立)
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — Q 轨道 Q2
