@@ -67,8 +67,8 @@ preset 对比已收敛:`coherence-v2` 为自然 EOS-bounded 评估推荐,`compac
 > v7(pair0.5+dedup)与 v7.1(纯 story 对齐)在 EOS 红线与重复指标上回退,adherence/ending 仅小幅改善
 > (29→22/25、27→29/25)。详细数据与教训见
 > [runbooks/tinystories_v7_story_aligned.md §5.1](runbooks/tinystories_v7_story_aligned.md)。
-> **计划决策规则已触发:T1/T2 收益有限 → 下一步 T3b(15.8M→35M 扩容)**;
-> 备选:先修 pad-tail 打包(多故事无 pad 窗口)再小幅迭代。
+> **决策规则触发后 T3b 已启动:v9(mid 37.7M)从头长跑运行中**;Q 量化轨道同期定案 15.8M 不达标
+> (见 [bitnet_quantization_plan.md](bitnet_quantization_plan.md)),两条轨道共同指向容量是主约束。
 
 ### T1 — 续写对齐训练(prompt adherence + endings)— 优先
 
@@ -97,6 +97,11 @@ preset 对比已收敛:`coherence-v2` 为自然 EOS-bounded 评估推荐,`compac
 
 - **T3a seq512 warm-start:** 工具已具备(`examples/resize_small_lm_context.py`),目标让完整故事弧进窗,直接攻击 endings。验收:val loss < 1.60,endings ≥ 40/60
 - **T3b 模型扩容 15.8M → ~35M:** `train_small_lm.py` 增加模型尺寸预设/CLI(dim 256→384)。验收:val loss < 1.55,endings ≥ 40/60。成本:训练时间 ×2-3
+  > **实施状态(2026-10-24):** `--model-size {small,mid}` 已交付(mid=dim512/expert512,实测 **37.7M 参数**,
+  > 4 项预设测试)。dim 变化使 `--init-from` 正确拒绝跨维 warm-start → **从头训练**:v9 长跑已启动
+  > (30k steps ≈ 8.5h MPS,吞吐 ~3.0k tok/s),runbook 见
+  > [runbooks/tinystories_v9_mid_scaling.md](runbooks/tinystories_v9_mid_scaling.md)。
+  > 验收(<1.55)预计需在 30k 基础上 `--resume` 续跑;里程碑参考 runbook §4。
 
 ### T4 — 评估验收工具化(与 T1 训练并行)
 

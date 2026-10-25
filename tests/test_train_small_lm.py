@@ -404,3 +404,37 @@ def test_save_checkpoint_records_quant_metadata(tmp_path):
     )
     plain = torch.load(default_ckpt, map_location="cpu", weights_only=False)
     assert plain["quant_mode"] == "none"
+
+
+def test_model_size_presets_define_small_and_mid():
+    assert set(train_small_lm.MODEL_SIZES) == {"small", "mid"}
+    assert train_small_lm.MODEL_SIZES["small"]["dim"] == 256
+    assert train_small_lm.MODEL_SIZES["mid"]["dim"] > 256
+
+
+def test_build_config_mid_size_passes_config_validation():
+    cfg = train_small_lm.build_config(
+        vocab_size=1000, max_seq_len=128, model_size="mid"
+    )
+
+    assert cfg.dim == 512
+    assert cfg.expert_dim == 512
+    assert cfg.dim % cfg.n_heads == 0
+    assert cfg.n_heads % cfg.n_kv_heads == 0
+
+
+def test_build_config_rejects_unknown_model_size():
+    try:
+        train_small_lm.build_config(vocab_size=1000, max_seq_len=128, model_size="huge")
+    except ValueError as exc:
+        assert "unknown model size" in str(exc)
+    else:
+        raise AssertionError("expected unknown model size to fail")
+
+
+def test_build_config_defaults_to_small_backward_compatible():
+    cfg_default = train_small_lm.build_config(vocab_size=1000, max_seq_len=128)
+    cfg_small = train_small_lm.build_config(
+        vocab_size=1000, max_seq_len=128, model_size="small"
+    )
+    assert cfg_default == cfg_small

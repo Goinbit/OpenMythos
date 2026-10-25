@@ -252,7 +252,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
-| small LM 本机轨道(计划外) | ✅ 完成 | 训练/生成/评估/调参/对比 CLI 全套 · 8 模型卡(v0→v6.1)· 2 runbook |
+| small LM 本机轨道(计划外) | 🟡 T3b 运行中 | v0→v6.1 完成;T3b 扩容 v9(mid 37.7M)从头长跑 30k steps 运行中([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
@@ -373,7 +373,31 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · Q3 阶梯 a 验收未过(量化代价定案),阶梯 b 移交 3B+
+## 2026-10-24 · T3b 扩容启动:`--model-size` 预设交付 + v9(mid 37.7M)从头长跑
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T3b
+
+### ✅ 完成
+- `train_small_lm.py` 新增 `MODEL_SIZES` 预设 + `--model-size {small,mid}` CLI:`small`=原配置(dim256,15.8M,逐字段向后兼容),`mid`=dim512/n_heads8/n_kv2/expert512,实测 **37,675,042 params**;未知尺寸显式 ValueError
+- 执行约束确认:dim 变化后 `validate_init_from_config` 正确拒绝跨维 warm-start → T3b 是**从头训练**(计划期"续训 ×2-3"的估算据此修正)
+- MPS 冒烟:50 步 loss 10.9→5.3 正常,吞吐 **~3.0k tok/s**(small 的一半)→ 30k 步 ETA ≈ 8.5h
+- **v9 从头长跑已启动**(nohup PID 47128):`--model-size mid --steps 30000 --lr 3e-4 --eos-loss-weight 4.0 --train-tokens 20000000`,输出 `checkpoints/tinystories_mps_mid_mythos_seq384_v9.pt`,日志 `runs/train_v9_mid_scaling.log`
+- 新增 `docs/runbooks/tinystories_v9_mid_scaling.md`(冒烟/全量/续跑/gate 验收/里程碑判读表/归档 checklist);迭代计划文档 T3b 标注实施状态
+
+### 📊 测试变化
+- before: 291 passed / 0 skipped
+- after: **295 passed** / 0 skipped(+4:预设定义/mid 构造过校验/未知尺寸拒绝/small 默认向后兼容)
+- ruff 干净
+
+### 🔑 关键决策 / 发现
+- **变量隔离延续**:v9 沿用 v6.1 谱系数据配方(stream/clean/EOS4.0),唯一变量是容量——验收读数干净
+- 跨维 warm-start 不可行是 init-from 校验的正确行为而非缺陷;计划的"续训"预期据此修正为从头 + resume 续跑
+- mid 38M 落在计划"~35M"目标带内(dim512 比 384 更接近意图:384 仅 ~25M,embed 占比仍过高)
+
+### 🧭 留到下阶段
+- v9 30k 完成后判读(runbook §4 里程碑表),按趋势 `--resume` 续跑至验收(val < 1.55 + endings ≥ 40/60 + EOS 60/60 红线)
+- Q 轨道 Q4(存储兑现)与 Stage 5 3B QAT 保持就绪;上游 PR 仍待用户决策
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — Q 轨道 Q3

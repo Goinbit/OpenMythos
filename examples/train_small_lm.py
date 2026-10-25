@@ -134,12 +134,29 @@ def autocast_context(use_amp: bool):
     return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
 
 
-def build_config(vocab_size: int, max_seq_len: int) -> MythosConfig:
+MODEL_SIZES: dict[str, dict[str, int]] = {
+    # ~15.8M params (v0-v8 lineage): embed-dominated, layers ~2.1M.
+    "small": dict(dim=256, n_heads=8, n_kv_heads=2, expert_dim=256),
+    # ~38M params (T3b scaling): layers grow ~4x, escape the capacity ceiling.
+    "mid": dict(dim=512, n_heads=8, n_kv_heads=2, expert_dim=512),
+}
+
+
+def build_config(
+    vocab_size: int, max_seq_len: int, model_size: str = "small"
+) -> MythosConfig:
+    try:
+        size = MODEL_SIZES[model_size]
+    except KeyError:
+        raise ValueError(
+            f"unknown model size {model_size!r}; "
+            f"expected one of {sorted(MODEL_SIZES)}"
+        ) from None
     return MythosConfig(
         vocab_size=vocab_size,
-        dim=256,
-        n_heads=8,
-        n_kv_heads=2,
+        dim=size["dim"],
+        n_heads=size["n_heads"],
+        n_kv_heads=size["n_kv_heads"],
         max_seq_len=max_seq_len,
         max_loop_iters=4,
         prelude_layers=1,
@@ -148,7 +165,7 @@ def build_config(vocab_size: int, max_seq_len: int) -> MythosConfig:
         n_experts=8,
         n_shared_experts=1,
         n_experts_per_tok=2,
-        expert_dim=256,
+        expert_dim=size["expert_dim"],
         lora_rank=8,
         dropout=0.0,
     )
@@ -337,6 +354,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--seq-len", type=int, default=128)
+    parser.add_argument(
+        "--model-size",
+        choices=sorted(MODEL_SIZES),
+        default="small",
+        help="model width preset (small ~15.8M, mid ~38M params)",
+    )
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--n-loops", type=int, default=4)
     parser.add_argument("--log-every", type=int, default=25)
@@ -437,7 +460,7 @@ def main() -> None:
     )
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     vocab_size = len(tokenizer)
-    cfg = build_config(vocab_size, args.seq_len)
+    cfg = build_config(vocab_size, args.seq_len, args.model_size)
     cfg = replace(
         cfg, quant=QuantConfig(mode=args.quant, group_size=args.quant_group_size)
     )
