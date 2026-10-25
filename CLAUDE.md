@@ -253,6 +253,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
 | small LM 本机轨道(计划外) | ✅ 完成 | 训练/生成/评估/调参/对比 CLI 全套 · 8 模型卡(v0→v6.1)· 2 runbook |
+| Q 量化轨道(计划外,BitNet b1.58) | 🟡 Q1 完成 | BitLinear 原语 + QuantConfig 已交付;Q2 架构接入待启动([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
 
@@ -372,7 +373,32 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · v7/v7.1 首轮训练与 gate 验收(两轮未过,T3b 决策触发)
+## 2026-10-24 · BitNet b1.58 量化轨道启动(Q1 BitLinear 原语交付)
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — Q 轨道规划 + Q1 交付
+
+### ✅ 完成
+- 背景:扫描 taiji-neural-core(三值量化仓库)发现其致命缺陷(量化无 scale 因子、benchmark 用合成稀疏度+自写弱基线、自带测试在非 AVX2 构建红),确立 BitNet b1.58(arXiv:2402.17764)为正确参照系
+- 新增 `docs/bitnet_quantization_plan.md`:Q1 BitLinear 原语 → Q2 架构接入 → Q3 QAT 双阶梯 → Q4 存储兑现 → Q5 3B 前瞻;含 OpenMythos 特有决策(LoRA 联合量化/ACT halt gate/MoE router 保 FP/循环深度红利)与 taiji 教训反面清单
+- **Q1 交付(TDD)**:`open_mythos/primitives/quant.py` — `absmean_quantize`(γ 显式返回,API 契约强制落盘)、`absmax_act_quant`(分组 absmax,A8 预留)、`BitLinear`(STE 前向 + `enabled=False` 精确线性);`QuantConfig`(`mode: none|w158` + `group_size`)入 MythosConfig(flat kwargs `quant_mode`/`quant_group_size` 路由 + 混用拒绝);顶层导出 BitLinear/absmean_quantize/absmax_act_quant
+- 冒烟:OpenMythos 真实模型(dim=64)前向不受影响;BitLinear QAT 前向/反向有限梯度、三值域正确
+
+### 📊 测试变化
+- before: 264 passed / 0 skipped
+- after: **282 passed** / 0 skipped
+- 新增: tests/test_quant.py 18 项(值域/γ 契约/稀疏度现实值 ~31%/disabled 逐位等价/STE 同上游梯度等价/roundtrip 稳定/激活量化分组与拒绝路径/QAT 端到端训练/config 校验 5 项)
+- mypy 0 errors / 35 files · ruff 干净 · 覆盖率 97% 保持(quant.py 91%)
+
+### 🔑 关键决策 / 发现
+- **γ 必须落盘写成 API 契约**:absmean_quantize 返回 (ternary, gamma),docstring 强制 export 时持久化——把 taiji-neural-core 的致命缺陷变成测试性约束
+- STE 测试的正确形式:给两层**同一个上游梯度**再比较参数梯度(两次独立 backward 的上游梯度因前向值不同天然不等)
+- 稀疏度现实值:高斯权重在 absmean 下 ~31% 零(不是合成基准的 70%),已固化为区间测试
+- 15.8M 小模型 embedding 占 80% → 只量化层参数整体收益 ~17%;Q 轨道真正兑现点在 3B+ preset
+
+### 🧭 留到下阶段
+- Q2 架构接入(factory 切换 + LoRA 联合量化 + checkpoint metadata),需先过 Q1 复核
+- Q3 QAT 双阶梯训练(依赖 Q2);T3b small LM 扩容决策仍待用户确认资源
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T1/T2 首轮执行与验收

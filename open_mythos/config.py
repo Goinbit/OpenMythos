@@ -85,6 +85,32 @@ class RecurrenceConfig:
             )
 
 
+@dataclass(frozen=True)
+class QuantConfig:
+    """Weight-quantization hyperparameters (BitNet b1.58 W1.58 track).
+
+    Fields:
+        mode       -- "none" for full precision, "w158" for ternary weights
+                      (absmean scale + straight-through QAT)
+        group_size -- activation-quant group width reserved for the A8 stage;
+                      must be > 0 whenever mode != "none"
+    """
+
+    mode: Literal["none", "w158"] = "none"
+    group_size: int = 128
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("none", "w158"):
+            raise ValueError(
+                f"quant mode must be 'none' or 'w158', got {self.mode!r}"
+            )
+        if self.mode != "none" and self.group_size <= 0:
+            raise ValueError(
+                f"quant group_size ({self.group_size}) must be > 0 "
+                f"when mode != 'none'"
+            )
+
+
 # Field-name partitions used by the flat-kwargs interceptor on MythosConfig.
 # Defined at module level (instead of as class-level attrs) so the __init__
 # logic doesn't accidentally shadow them as instance attributes.
@@ -110,17 +136,19 @@ _RECURRENCE_FIELDS = frozenset((
     "act_threshold",
     "lora_rank",
 ))
-_NESTED_FIELDS = frozenset(("attention", "moe", "recurrence"))
+_QUANT_FIELDS = frozenset(("quant_mode", "quant_group_size"))
+_QUANT_FIELD_MAP = {"quant_mode": "mode", "quant_group_size": "group_size"}
+_NESTED_FIELDS = frozenset(("attention", "moe", "recurrence", "quant"))
 
 
 @dataclass(frozen=True, init=False)
 class MythosConfig:
     """Top-level hyperparameter configuration for OpenMythos.
 
-    Composes ``AttentionConfig`` + ``MoEConfig`` + ``RecurrenceConfig`` around
-    a small set of truly-core fields.  Cross-group invariants (e.g.
-    ``dim % n_heads``) are validated in ``__post_init__`` after each
-    sub-config has already validated its own local invariants.
+    Composes ``AttentionConfig`` + ``MoEConfig`` + ``RecurrenceConfig`` +
+    ``QuantConfig`` around a small set of truly-core fields.  Cross-group
+    invariants (e.g. ``dim % n_heads``) are validated in ``__post_init__``
+    after each sub-config has already validated its own local invariants.
 
     Two construction styles are supported:
 
@@ -151,6 +179,7 @@ class MythosConfig:
     attention: AttentionConfig = field(default_factory=AttentionConfig)
     moe: MoEConfig = field(default_factory=MoEConfig)
     recurrence: RecurrenceConfig = field(default_factory=RecurrenceConfig)
+    quant: QuantConfig = field(default_factory=QuantConfig)
 
     # Defaults for the core (non-nested) fields.  Kept in sync with the
     # dataclass field defaults above; used by ``__init__`` to fill in
@@ -168,7 +197,9 @@ class MythosConfig:
 
     def __init__(self, **kwargs: Any) -> None:
         has_flat = any(
-            k in (_ATTENTION_FIELDS | _MOE_FIELDS | _RECURRENCE_FIELDS)
+            k in (
+                _ATTENTION_FIELDS | _MOE_FIELDS | _RECURRENCE_FIELDS | _QUANT_FIELDS
+            )
             for k in kwargs
         )
         has_nested = any(k in _NESTED_FIELDS for k in kwargs)
@@ -188,9 +219,15 @@ class MythosConfig:
             rec_kwargs = {
                 k: kwargs.pop(k) for k in list(kwargs) if k in _RECURRENCE_FIELDS
             }
+            quant_kwargs = {
+                _QUANT_FIELD_MAP[k]: kwargs.pop(k)
+                for k in list(kwargs)
+                if k in _QUANT_FIELDS
+            }
             kwargs["attention"] = AttentionConfig(**attn_kwargs)
             kwargs["moe"] = MoEConfig(**moe_kwargs)
             kwargs["recurrence"] = RecurrenceConfig(**rec_kwargs)
+            kwargs["quant"] = QuantConfig(**quant_kwargs)
 
         # Fill in any unspecified core fields with their defaults.  Nested
         # sub-configs default to a fresh instance of their sub-dataclass so
@@ -200,6 +237,7 @@ class MythosConfig:
         kwargs.setdefault("attention", AttentionConfig())
         kwargs.setdefault("moe", MoEConfig())
         kwargs.setdefault("recurrence", RecurrenceConfig())
+        kwargs.setdefault("quant", QuantConfig())
 
         # Reject any stray kwargs that don't correspond to a known field so
         # typos fail loudly rather than being silently dropped.
@@ -301,6 +339,14 @@ class MythosConfig:
     @property
     def lora_rank(self) -> int:
         return self.recurrence.lora_rank
+
+    @property
+    def quant_mode(self) -> str:
+        return self.quant.mode
+
+    @property
+    def quant_group_size(self) -> int:
+        return self.quant.group_size
 
     # --- Legacy flat constructor shim -----------------------------------
     @classmethod
