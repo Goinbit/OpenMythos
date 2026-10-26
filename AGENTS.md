@@ -252,7 +252,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
-| small LM 本机轨道(计划外) | 🟡 T5 判决:v9-T5 75k 最佳 | val 1.4569 · EOS 60/60 · repeated 6 · missing 24 全部达标/超基线;endings 36/60 · weak 35 待语料/判据工作([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
+| small LM 本机轨道(计划外) | 🟡 T5+校准终判 | v9-T5 75k 最佳:val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · weak 校准后平手;**drift 11 vs 8 = 真实差距**(数据侧候选 T6)([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
@@ -373,7 +373,30 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · T5 终判:75k 完成,val/repeated/missing 创历史最佳,endings 36 差 4
+## 2026-10-24 · weak 判据人工校准:49% 误报证实,真实差距定位到 drift
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — T5 后置校准轮
+
+### ✅ 完成
+- **60 样本逐条人审**(v9-T5 mid-v1 256 严格报告):weak 35 条中 **17 条(49%)误报**——自然续写以代词(She/It)展开 prompt 场景,被"逐字关键词重复率 <40%"误伤;18 条真阳性确认"Lily 劫持"失败模式真实存在(prompt 主角被换成高频训练名,12+ 条)
+- **校准(TDD)**:`compute_coherence_metrics` 新增 `has_reanchoring_opening` — 续写开头两句内有 prompt 关键词回指或句首主语代词即"已锚定",不再标 weak;漂浮跑题仍报警,劫持由 character_drift 负责。+2 新测试,1 处渲染期望按新语义更新(296 → **298 passed**)
+- **校准后 apples-to-apples**(同 seed 同样本仅换判据):weak v6.1=3 / v9-T5=5(基线的 29 里也有 26 条同类噪声;3 vs 5/60 在统计噪声内 = adherence 平手);**character_drift 8 → 11 才是真实差距**——人审中最大的失败模式,v9-T5 略更严重
+- runbook §8 + 计划文档终判更新;后续验收线改用校准定义并同定义对比基线
+
+### 📊 测试变化
+- before: 296 passed / 0 skipped
+- after: **298 passed** / 0 skipped(+2:代词续写不误报/漂浮跑题仍报警)
+- ruff 干净;新增校准后评估报告 ×2(`runs/generation_eval_1793028269.md` / `_1793028374.md`)
+
+### 🔑 关键决策 / 发现
+- **判据噪声曾遮蔽真实信号**:weak 35(旧定义)里一半是文风误判,而真正的劫持失败一直由 drift 记录(8→11)——调优目标若按旧 weak 走会南辕北辙
+- "Lily 劫持"是 TinyStories 语料名字频率的直接产物;数据侧杠杆 = 名字平衡化/重加权,而非更多步数
+- 人审校准是启发式指标上线的必要环节:T5 终判的"weak 顽固项"结论被本轮修正为"判据噪声 + drift 真差距"
+
+### 🧭 留到下阶段
+- drift 数据侧迭代(候选 T6):名字平衡化打包/重加权,目标 drift ≤ 8(基线)且各指标不回退
+- 上游 PR 决策仍待用户;所有工作已推送 fork
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T5 数据侧

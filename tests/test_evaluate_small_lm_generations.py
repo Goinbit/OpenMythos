@@ -240,7 +240,9 @@ def test_render_report_includes_checkpoint_metadata_and_samples():
     assert "quality_sentences=2" in report
     assert "quality_flags=too_short" in report
     assert "coherence_prompt_overlap=0.00" in report
-    assert "coherence_flags=missing_ending,weak_prompt_adherence" in report
+    # Calibrated (2026-10-24): pronoun continuation "It was blue." re-anchors
+    # to the prompt scene, so only the missing ending is flagged.
+    assert "coherence_flags=missing_ending" in report
     assert "Tom lost his red ball. He found it." in report
 
 
@@ -317,3 +319,31 @@ def test_get_preset_set_mid_v1_raises_repetition_control_for_capacity():
     assert by_name["creative"].repetition_penalty == 1.18
     assert all(preset.no_repeat_ngram_size == 3 for preset in presets)
     assert all(preset.stop_after_sentences == 0 for preset in presets)
+
+
+def test_calibrated_weak_spares_pronoun_continuation():
+    """60-sample human audit (2026-10-24): pronoun-driven continuations of the
+    prompt scene are faithful; verbatim keyword density alone under-scores them."""
+    metrics = compute_coherence_metrics(
+        prompt="Mia heard a bell in the forest",
+        text=(
+            "Mia heard a bell in the forest and followed it. She ran and ran "
+            "until she reached a tall tree. She slept under it."
+        ),
+    )
+
+    assert metrics.prompt_overlap == 0.0
+    assert "weak_prompt_adherence" not in metrics.flags
+
+
+def test_calibrated_weak_still_flags_floating_continuation():
+    metrics = compute_coherence_metrics(
+        prompt="Nora found a glowing shell",
+        text=(
+            "Nora found a glowing shell. The octopus was very happy and "
+            "thanked his friends for helping him."
+        ),
+    )
+
+    assert metrics.prompt_overlap == 0.0
+    assert "weak_prompt_adherence" in metrics.flags

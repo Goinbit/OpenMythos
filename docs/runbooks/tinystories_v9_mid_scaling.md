@@ -127,3 +127,24 @@ nohup env HF_HUB_DISABLE_XET=1 .venv-arm64/bin/python -u -m examples.train_small
 但 weak 顽固不动 + endings 斜率衰减表明**继续堆训练低性价比**。weak 差距的合理解释是启发式判据
 对高多样性写作系统性偏严,剩余杠杆:语料规模/多样性、weak 判据人工校准——均为新会话级工作。
 归档:`openmythos_tinystories_mid_38m_step75000_seq384_v9_t5.pt`(SHA256 `24033aa0…`)+ 模型卡。
+
+## 8. weak 判据人工校准(2026-10-24)
+
+**审计:** 60 样本(v9-T5 mid-v1 256 严格)逐条人读 vs 判据标记 — **17/35(49%)为误报**:
+自然续写以代词(She/It)展开 prompt 场景,被判据的"逐字关键词重复率 <40%"误伤;同时
+18 条真阳性确认模型确有"Lily 劫持"失败模式(prompt 主角被换成高频训练名)。
+
+**校准(TDD):** `weak_prompt_adherence` 触发条件追加回指检查 — 续写开头两句内出现
+prompt 关键词回指或句首主语代词即视为"已锚定",不再标记;漂浮式跑题(无任何回指)仍报警。
+劫持类失败由 `character_drift` 继续负责(具名 prompt)。+2 测试,1 处期望按新语义更新。
+
+**校准后 apples-to-apples(同样本仅换判据,确定性复现):**
+
+| 校准后 | v6.1 | v9-T5 75k |
+|---|---|---|
+| weak | 3 | 5(噪声区间内,3 vs 5/60 不显著) |
+| character_drift | 8 | **11 ← 真实差距所在** |
+
+**结论:** 旧 weak 35 是判据噪声为主; adherence 校准后两代模型基本平手。真正该投入的是
+**drift(劫持)**——数据侧杠杆 = TinyStories 语料 Lily 频率(名字平衡化/重加权)。
+后续验收线应使用校准定义并在同定义下对比基线。

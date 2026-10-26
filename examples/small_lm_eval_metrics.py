@@ -202,6 +202,32 @@ def compute_quality_metrics(
     )
 
 
+_SUBJECT_PRONOUNS = {"she", "he", "it", "they", "i", "we"}
+
+
+def has_reanchoring_opening(continuation: str, prompt_keywords: list[str]) -> bool:
+    """True when the continuation's opening re-anchors to the prompt scene.
+
+    Checks the first two sentences for a verbatim prompt keyword or a
+    sentence-initial subject pronoun. Natural TinyStories-style continuations
+    switch to pronouns right after the opening line, so verbatim keyword
+    density alone under-scores them — a 60-sample human audit (2026-10-24)
+    found 17/35 weak flags were faithful pronoun continuations, while
+    character hijacking is tracked separately by ``character_drift``.
+    """
+    keyword_set = set(prompt_keywords)
+    sentences = [s for s in re.split(r"[.!?]+", continuation) if s.strip()][:2]
+    for sentence in sentences:
+        words = extract_words(sentence)
+        if not words:
+            continue
+        if words[0] in _SUBJECT_PRONOUNS:
+            return True
+        if keyword_set & set(words):
+            return True
+    return False
+
+
 def compute_coherence_metrics(prompt: str, text: str) -> CoherenceMetrics:
     continuation = strip_prompt_prefix(text, prompt)
     continuation_words = set(extract_words(continuation))
@@ -218,7 +244,7 @@ def compute_coherence_metrics(prompt: str, text: str) -> CoherenceMetrics:
     ending = has_story_ending(text)
 
     flags = []
-    if overlap < 0.4:
+    if overlap < 0.4 and not has_reanchoring_opening(continuation, prompt_keywords):
         flags.append("weak_prompt_adherence")
     if not ending:
         flags.append("missing_ending")
