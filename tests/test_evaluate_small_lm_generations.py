@@ -306,3 +306,14 @@ def test_check_gates_rejects_eos_total_mismatch():
 
     with pytest.raises(ValueError, match="does not match sample count"):
         check_gates(30, 36, {}, require_eos=(60, 60), fail_on=[])
+
+
+def test_get_preset_set_mid_v1_raises_repetition_control_for_capacity():
+    presets = get_preset_set("mid-v1")
+
+    by_name = {preset.name: preset for preset in presets}
+    assert by_name["conservative"].repetition_penalty == 1.22
+    assert by_name["balanced"].repetition_penalty == 1.22
+    assert by_name["creative"].repetition_penalty == 1.18
+    assert all(preset.no_repeat_ngram_size == 3 for preset in presets)
+    assert all(preset.stop_after_sentences == 0 for preset in presets)

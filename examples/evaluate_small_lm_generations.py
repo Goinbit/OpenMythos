@@ -95,6 +95,14 @@ COHERENCE_V2_PRESETS = [
     SamplingPreset("creative", 0.70, 30, 1.12, 3, 0),
 ]
 
+# Tuned for the mid (37.7M) v9 lineage: sharper logits memorize templates more
+# readily than the 15.8M model, so repetition control is raised across tiers.
+MID_V1_PRESETS = [
+    SamplingPreset("conservative", 0.55, 20, 1.22, 3, 0),
+    SamplingPreset("balanced", 0.60, 25, 1.22, 3, 0),
+    SamplingPreset("creative", 0.70, 30, 1.18, 3, 0),
+]
+
 
 def get_preset_set(name: str) -> list[SamplingPreset]:
     if name == "legacy":
@@ -105,9 +113,11 @@ def get_preset_set(name: str) -> list[SamplingPreset]:
         return COHERENCE_V1_PRESETS
     if name == "coherence-v2":
         return COHERENCE_V2_PRESETS
+    if name == "mid-v1":
+        return MID_V1_PRESETS
     raise ValueError(
         "unknown preset set; expected one of: "
-        "legacy, compact-v61, coherence-v1, coherence-v2"
+        "legacy, compact-v61, coherence-v1, coherence-v2, mid-v1"
     )
 
 
@@ -247,7 +257,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--preset-set",
         default="legacy",
-        choices=["legacy", "compact-v61", "coherence-v1", "coherence-v2"],
+        choices=["legacy", "compact-v61", "coherence-v1", "coherence-v2", "mid-v1"],
         help="sampling preset set to evaluate",
     )
     parser.add_argument("--max-new-tokens", type=int, default=140)

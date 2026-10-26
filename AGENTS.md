@@ -252,7 +252,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
-| small LM 本机轨道(计划外) | 🟡 T3b 运行中 | v0→v6.1 完成;T3b 扩容 v9(mid 37.7M)从头长跑 30k steps 运行中([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
+| small LM 本机轨道(计划外) | 🟡 T3b 判决:v9 60k | val 1.5130 ✓ · EOS 60/60 ✓ · endings 35/60 ❌(数据侧待做);v9+mid-v1 为新基线([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
@@ -373,7 +373,33 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · v9 中途判读:45k 验收三项过二,EOS 双预算全绿,续跑 60k
+## 2026-10-24 · T3b 终判:v9 60k 完成,val/EOS 达标,endings 35/60 待数据侧
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — T3b v9 收官
+
+### ✅ 完成
+- 60k 续跑完成:val **1.5130**(曲线 30k 1.5515 → 45k 1.5142 → 60k 1.5130,平台 ~1.51)
+- **60k + coherence-v2 生成回退**:endings 平台(30-31/60)、repeated 14→22-23、EOS 58-59/60、词数 82.5→92-95——根因 ~9.2 epochs(60k×8×3072 tok / 20M 预算)记忆化前兆,与 v7 发散事故同机制慢动作版
+- **决策规则预定分支触发:停训 → mid-v1 preset 微调**(coherence-v2 按 small 调参,mid logits 更 sharp):conservative/balanced 惩罚提至 1.22、creative 1.18
+- **mid-v1 效果显著**:EOS **60/60 严格-256**(256/376 双预算逐字节一致=全早停)、endings **35/60**(60k 31→35)、repeated 23→17、missing 25(好于 v6.1 基线 27)、词数 88
+- **T3b 三主线判据:val ✓ · EOS ✓ · endings 35/60 vs ≥40 ❌**——weak(35 vs 29)/repeated(17 vs 14)仍落后基线,下一杠杆在数据侧(预算/去重修复版打包),不在步数
+- 归档:`checkpoints/openmythos_tinystories_mid_38m_step60000_seq384_v9.pt`(SHA256 `43a88b98…`)+ 模型卡;`evaluate_small_lm_generations.py` 新增 `mid-v1` preset set(+1 测试)
+
+### 📊 测试变化
+- before: 295 passed / 0 skipped
+- after: **296 passed** / 0 skipped(+1:mid-v1 preset 定义)
+- ruff 干净
+
+### 🔑 关键决策 / 发现
+- **`--resume` 前必须归档**:45k 的最佳生成权重被 60k 覆盖不可恢复(45k 时 EOS 双预算全绿 + repeated 14)——教训已固化进 runbook §6
+- 生成素养追赶的完整轨迹:loss 平台(45k)后 endings 26→30(+15k 步)→ 30(平台);preset 免费变量一轮 +5——采样配置与模型容量的交互是被低估的杠杆
+- epochs 上限的经验数字:20M 预算上 6.9 epochs(45k)是生成质量甜点,9.2 epochs(60k)开始回退;数据预算应随步数线性放大
+- mid-v1 与 small 的 coherence-v2 参数差异(惩罚 1.10-1.16 → 1.18-1.22)实证:容量越大越需要显式重复控制
+
+### 🧭 留到下阶段
+- 数据侧迭代(T5 候选):扩大数据预算或修复版去重打包,目标 weak ≤ 29 / endings ≥ 40——需先做 dedup 保守化修复(T2 教训:只删完全重复)
+- v9 60k + mid-v1 为当前最佳本机模型,替代 v6.1 成为新基线;上游 PR 仍待用户决策
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — T3b v9 训练中途验收

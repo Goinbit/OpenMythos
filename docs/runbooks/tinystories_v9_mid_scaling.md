@@ -72,6 +72,20 @@ nohup env HF_HUB_DISABLE_XET=1 .venv-arm64/bin/python -u -m examples.train_small
 
 ## 5. 归档 checklist
 
-- [ ] gate 通过后复制 `checkpoints/openmythos_tinystories_mid_38m_step<step>_seq384_v9.pt` + SHA256
-- [ ] 模型卡 `docs/model_cards/openmythos_tinystories_mid_38m_step<step>_seq384_v9.md`
-- [ ] AGENTS.md 执行日志 + 滚动快照更新
+- [x] checkpoint 复制 `checkpoints/openmythos_tinystories_mid_38m_step60000_seq384_v9.pt` + SHA256(`43a88b98…`)
+- [x] 模型卡 `docs/model_cards/openmythos_tinystories_mid_38m_step60000_seq384_v9.md`
+- [x] AGENTS.md 执行日志 + 滚动快照更新
+
+## 6. 执行结果(2026-10-24 · 60k 完成 + mid-v1 preset)
+
+| 阶段 | val | EOS(256/376) | endings | repeated | 备注 |
+|---|---|---|---|---|---|
+| 30k | 1.5515 | 58/60 → 60/60 | 25-26/60 | 17-18 | EOS 有预算长尾 |
+| 45k | 1.5142 ✓ | **60/60 双预算** | 30/60 | 14 | 生成素养追平期 |
+| 60k(coherence-v2) | 1.5130 ✓ | 58-59/60 ❌ | 30-31/60(平台) | **22-23 ❌** | ~9.2 epochs,记忆化前兆 |
+| 60k(**mid-v1**) | 同 | **60/60 严格-256** | **35/60** | 17 | 推荐配置 |
+
+**判决:** val ✓ · EOS 红线 ✓(需 mid-v1 preset)· endings 35/60 vs ≥40 ❌。45k→60k 生成指标平台化且
+repeated 恶化 → **停止堆步数**;endings/weak 的下一杠杆在数据侧(20M 预算 9.2 epochs 是结构性原因)。
+
+**教训(已入日志):** `--resume` 续跑前必须先归档当前 checkpoint——45k 的最佳生成权重被 60k 覆盖且不可恢复。
