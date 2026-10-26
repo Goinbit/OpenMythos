@@ -26,11 +26,15 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
-from examples.small_lm_data import StoryAlignedDataset, collect_stories, dedup_stories
+from examples.small_lm_data import (
+    StoryAlignedDataset,
+    balance_names,
+    collect_stories,
+    dedup_stories,
+)
 from examples.small_lm_text import clean_text_artifacts
 from open_mythos import MythosConfig, OpenMythos
 from open_mythos.config import QuantConfig
-
 
 @dataclass(frozen=True)
 class WeightLoadResult:
@@ -75,6 +79,7 @@ class PackedTextDataset(Dataset):
         eos_token_id: int | None,
         append_eos: bool,
         clean_text: bool = True,
+        name_balance_seed: int | None = None,
     ) -> None:
         if append_eos and eos_token_id is None:
             raise ValueError(
@@ -85,6 +90,8 @@ class PackedTextDataset(Dataset):
         for sample in hf_dataset:
             text = sample[text_field]
             if isinstance(text, str) and text.strip():
+                if name_balance_seed is not None:
+                    text = balance_names(text, seed=name_balance_seed)
                 if clean_text:
                     text = clean_text_artifacts(text)
                 ids = tokenizer.encode(text, add_special_tokens=False)
@@ -206,6 +213,7 @@ def save_checkpoint(
     packing: str = "stream",
     pair_mix: float = 0.0,
     dedup_8gram: bool = False,
+    balance_names: bool = False,
     quant_mode: str = "none",
     quant_group_size: int = 128,
 ) -> None:
@@ -225,6 +233,7 @@ def save_checkpoint(
             "packing": packing,
             "pair_mix": pair_mix,
             "dedup_8gram": dedup_8gram,
+            "balance_names": balance_names,
             "quant_mode": quant_mode,
             "quant_group_size": quant_group_size,
         },
@@ -418,6 +427,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--balance-names",
+        action="store_true",
+        help=(
+            "rotate dominant TinyStories names (Lily/Tom/Ben/Timmy) through a "
+            "balanced pool to counter character hijacking; requires --packing "
+            "story"
+        ),
+    )
+    parser.add_argument(
         "--quant",
         choices=["none", "w158"],
         default="none",
@@ -486,7 +504,8 @@ def main() -> None:
         f"[setup] dataset={args.dataset} config={args.dataset_config or 'none'} "
         f"append_eos={append_eos} eos_loss_weight={args.eos_loss_weight} "
         f"clean_text={clean_text} packing={packing} pair_mix={pair_mix} "
-        f"dedup_8gram={args.dedup_8gram} quant={args.quant}"
+        f"dedup_8gram={args.dedup_8gram} balance_names={args.balance_names} "
+        f"quant={args.quant}"
     )
     raw_train = load_text_dataset(args.dataset, args.dataset_config, args.train_split)
     raw_eval = load_text_dataset(args.dataset, args.dataset_config, args.eval_split)
@@ -499,6 +518,7 @@ def main() -> None:
             tokenizer.eos_token_id,
             append_eos,
             clean_text=clean_text,
+            name_balance_seed=args.seed if args.balance_names else None,
         )
         stories, dropped = dedup_stories(stories, enabled=args.dedup_8gram)
         if args.dedup_8gram:
@@ -516,6 +536,7 @@ def main() -> None:
             tokenizer.eos_token_id,
             append_eos,
             clean_text=clean_text,
+            name_balance_seed=args.seed if args.balance_names else None,
         )
     eval_ds = PackedTextDataset(
         raw_eval,
@@ -567,6 +588,10 @@ def main() -> None:
             raise ValueError("resume checkpoint pair_mix does not match current run")
         if "dedup_8gram" in ckpt and bool(ckpt["dedup_8gram"]) != args.dedup_8gram:
             raise ValueError("resume checkpoint dedup_8gram does not match current run")
+        if "balance_names" in ckpt and bool(ckpt["balance_names"]) != args.balance_names:
+            raise ValueError(
+                "resume checkpoint balance_names does not match current run"
+            )
         if "quant_mode" in ckpt and str(ckpt["quant_mode"]) != args.quant:
             raise ValueError("resume checkpoint quant_mode does not match current run")
         if (
@@ -604,6 +629,10 @@ def main() -> None:
         if "dedup_8gram" in ckpt and bool(ckpt["dedup_8gram"]) != args.dedup_8gram:
             raise ValueError(
                 "init-from checkpoint dedup_8gram does not match current run"
+            )
+        if "balance_names" in ckpt and bool(ckpt["balance_names"]) != args.balance_names:
+            raise ValueError(
+                "init-from checkpoint balance_names does not match current run"
             )
         if "quant_mode" in ckpt and str(ckpt["quant_mode"]) != args.quant:
             raise ValueError(
@@ -685,6 +714,7 @@ def main() -> None:
                 packing,
                 pair_mix,
                 args.dedup_8gram,
+                args.balance_names,
                 args.quant,
                 args.quant_group_size,
             )
@@ -706,6 +736,7 @@ def main() -> None:
             packing,
             pair_mix,
             args.dedup_8gram,
+            args.balance_names,
             args.quant,
             args.quant_group_size,
         )

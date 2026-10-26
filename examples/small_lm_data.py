@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import re
+
 import torch
 from torch.utils.data import Dataset
 
@@ -17,6 +19,73 @@ from examples.small_lm_text import clean_text_artifacts
 
 DEDUP_PREFIX_TOKENS = 8
 MIN_OPENING_WORDS = 3
+
+# T6 name balancing: TinyStories' top names dwarf the rest of the pool —
+# Lily appears in ~150% of stories (3x the runner-up Tom at ~53%) — which the
+# model mirrors as "hijack to Lily" when generation stalls (drift 11 vs 8).
+# Deterministically rotating dominant names across a balanced pool breaks the
+# shortcut without dropping data or touching model code.
+BALANCED_NAME_STOPWORDS = {
+    "She",
+    "He",
+    "It",
+    "They",
+    "The",
+    "But",
+    "You",
+    "We",
+    "One",
+    "Once",
+    "When",
+    "Mom",
+    "Dad",
+    "Mommy",
+    "Daddy",
+}
+BALANCED_NAME_TARGETS = ("Lily", "Tom", "Ben", "Timmy")
+BALANCE_NAME_POOL = (
+    "Nora",
+    "Ella",
+    "Ruby",
+    "Sofia",
+    "Maya",
+    "Leo",
+    "Owen",
+    "Jack",
+    "Ivy",
+    "Zoe",
+)
+
+
+def balance_names(text: str, seed: int) -> str:
+    """Rotate dominant TinyStories names to pool names (deterministic).
+
+    Every occurrence of each target name in one text maps to the same pool
+    name, distinct replacements per target, keyed off (text, seed) so runs
+    are reproducible.
+    """
+    import hashlib
+
+    def hash_int(value: str) -> int:
+        return int.from_bytes(hashlib.sha256(value.encode()).digest()[:4], "big")
+
+    mapping: dict[str, str] = {}
+    used: set[str] = set()
+    for offset, target in enumerate(BALANCED_NAME_TARGETS):
+        if target not in text:
+            continue
+        for attempt in range(len(BALANCE_NAME_POOL)):
+            candidate = BALANCE_NAME_POOL[
+                (hash_int(f"{target}:{text}:{seed}") + offset + attempt)
+                % len(BALANCE_NAME_POOL)
+            ]
+            if candidate not in used and candidate not in BALANCED_NAME_TARGETS:
+                mapping[target] = candidate
+                used.add(candidate)
+                break
+    for target, replacement in mapping.items():
+        text = re.sub(rf"\b{target}\b", replacement, text)
+    return text
 
 
 def split_opening(text: str) -> tuple[str, str]:
@@ -51,7 +120,12 @@ def tokenize_story(
     eos_token_id: int | None,
     append_eos: bool,
     clean_text: bool = True,
+    name_balance_seed: int | None = None,
 ) -> StoryTokens:
+    if name_balance_seed is not None:
+        from examples.train_small_lm import balance_names
+
+        text = balance_names(text, seed=name_balance_seed)
     if clean_text:
         text = clean_text_artifacts(text)
     opening, rest = split_opening(text)
@@ -75,6 +149,7 @@ def collect_stories(
     eos_token_id: int | None,
     append_eos: bool,
     clean_text: bool = True,
+    name_balance_seed: int | None = None,
 ) -> list[StoryTokens]:
     if append_eos and eos_token_id is None:
         raise ValueError(
@@ -86,7 +161,14 @@ def collect_stories(
     for sample in hf_dataset:
         text = sample[text_field]
         if isinstance(text, str) and text.strip():
-            story = tokenize_story(text, tokenizer, eos_token_id, append_eos, clean_text)
+            story = tokenize_story(
+                text,
+                tokenizer,
+                eos_token_id,
+                append_eos,
+                clean_text,
+                name_balance_seed=name_balance_seed,
+            )
             if story.tokens:
                 stories.append(story)
                 total += len(story.tokens)

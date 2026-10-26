@@ -148,3 +148,30 @@ prompt 关键词回指或句首主语代词即视为"已锚定",不再标记;漂
 **结论:** 旧 weak 35 是判据噪声为主; adherence 校准后两代模型基本平手。真正该投入的是
 **drift(劫持)**——数据侧杠杆 = TinyStories 语料 Lily 频率(名字平衡化/重加权)。
 后续验收线应使用校准定义并在同定义下对比基线。
+
+## 9. T6 · 名字平衡化(2026-10-24 启动)
+
+**根因量化:** 50k 故事抽样,`Lily` 出现于 **150%** 的故事(第二名 Tom 53%,3 倍断层);
+"卡壳就喊 Lily"是语料分布的直接镜像(校准后 drift 11 vs 基线 8)。
+
+**方案:** 替换增强 — `--balance-names`:把高频名(Lily/Tom/Ben/Timmy)按确定性哈希
+(text+seed)轮换到 10 名平衡池(Nora/Ella/Ruby/Sofia/Maya/Leo/Owen/Jack/Ivy/Zoe),
+逐故事一致、逐名不碰撞;纯文本层变换,与 packing/quant 正交,eval 侧保持规范语料。
+
+**执行(教训已应用:输出到新文件,不覆盖 T5):**
+
+```bash
+nohup env HF_HUB_DISABLE_XET=1 .venv-arm64/bin/python -u -m examples.train_small_lm \
+  --dataset roneneldan/TinyStories --dataset-config "" \
+  --resume checkpoints/tinystories_mps_mid_mythos_seq384_v9.pt \
+  --steps 15000 --batch-size 8 --seq-len 384 --device mps \
+  --lr 3e-4 --eos-loss-weight 4.0 --model-size mid --balance-names \
+  --train-tokens 60000000 --eval-tokens 200000 \
+  --eval-every 1000 --eval-batches 20 --log-every 100 --save-every 1000 \
+  --seed 7 --out checkpoints/tinystories_mps_mid_mythos_seq384_v9_t6.pt \
+  > runs/train_v9_t6_namebalance.log 2>&1 &
+```
+
+- 验收(校准判据,mid-v1 preset 256 严格):**drift ≤ 8** 且 val/EOS/endings/repeated/missing 不回退
+- 判读:drift 达标 → T6 成立,"名字平衡化"进正式数据配方;未达 → 劫持非纯频率问题,记录后收束 small LM 轨道
+- metadata:`balance_names` 字段 + resume/init-from 守卫(同 packing 模式)

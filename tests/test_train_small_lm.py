@@ -172,7 +172,9 @@ def test_load_matching_model_weights_skips_shape_mismatches():
 
 
 from examples.small_lm_data import (  # noqa: E402
+    BALANCE_NAME_POOL,
     StoryAlignedDataset,
+    balance_names,
     collect_stories,
     dedup_stories,
     split_opening,
@@ -438,3 +440,70 @@ def test_build_config_defaults_to_small_backward_compatible():
         vocab_size=1000, max_seq_len=128, model_size="small"
     )
     assert cfg_default == cfg_small
+
+
+def test_name_balance_swaps_high_frequency_names_deterministically():
+    rng_seed = 7
+    text_a = "Lily found a door. She opened it. Lily was happy."
+    text_b = "Lily found a door. She opened it. Lily was happy."
+
+    out_a = balance_names(text_a, seed=rng_seed)
+    out_b = balance_names(text_b, seed=rng_seed)
+
+    assert out_a == out_b  # deterministic per (text, seed)
+    assert "Lily" not in out_a
+    assert out_a.count(out_a.split()[0]) == 2  # same replacement, consistently
+
+
+def test_name_balance_round_trips_neutral_names_unchanged():
+    text = "Nora found a glowing shell. It was pretty."
+    assert balance_names(text, seed=7) == text
+
+
+def test_name_balance_maps_replacements_one_to_one_per_story():
+    out = balance_names(
+        "Lily and Tom played. Tom ran, Lily laughed.", seed=3
+    )
+
+    assert "Lily" not in out and "Tom" not in out
+    replaced = out.split(".")[0]
+    # Lily→X and Tom→Y with X != Y (two prompt names must not collide)
+    assert len(set(replaced.split(" and ")[0:1])) == 1
+
+
+def test_name_balance_replacement_names_come_from_corpus_pool():
+    
+
+    out = balance_names("Lily sang all day.", seed=11)
+    replacement = out.split()[0]
+
+    assert replacement in BALANCE_NAME_POOL
+    assert replacement not in {"Lily", "Tom", "Ben", "Timmy"}
+
+
+def test_packed_text_dataset_applies_name_balancing():
+    tok = WordTokenizer()
+    samples = [{"text": "Lily sang. Lily laughed."}, {"text": "Tom ran. Tom fell."}]
+
+    ds = PackedTextDataset(
+        samples,
+        tok,
+        seq_len=4,
+        max_tokens=100,
+        text_field="text",
+        eos_token_id=99,
+        append_eos=True,
+        name_balance_seed=7,
+    )
+
+    tokens = ds.data.tolist()
+    assert 99 in tokens  # EOS present
+    # Balanced stream contains pool names' tokens, not Lily/Tom ids.
+    from examples.small_lm_data import BALANCE_NAME_POOL
+
+    pool_ids = {tok.encode(name)[0] for name in BALANCE_NAME_POOL}
+    lily_id = tok.encode("Lily")[0]
+    tom_id = tok.encode("Tom")[0]
+    assert lily_id not in tokens
+    assert tom_id not in tokens
+    assert pool_ids & set(tokens)
