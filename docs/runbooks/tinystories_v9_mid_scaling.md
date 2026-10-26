@@ -89,3 +89,25 @@ nohup env HF_HUB_DISABLE_XET=1 .venv-arm64/bin/python -u -m examples.train_small
 repeated 恶化 → **停止堆步数**;endings/weak 的下一杠杆在数据侧(20M 预算 9.2 epochs 是结构性原因)。
 
 **教训(已入日志):** `--resume` 续跑前必须先归档当前 checkpoint——45k 的最佳生成权重被 60k 覆盖且不可恢复。
+
+## 7. T5 · 新鲜数据续跑(2026-10-24 启动)
+
+T3b 终判后 weak(35 vs 29)/repeated(17 vs 14)的结构性根因是 20M 预算 × 9.2 epochs。
+T5 以 **60M 预算(3 倍)resume 续跑至 75k**:数据集按流序确定性收集,旧 52k 窗口之外新增
+~104k 新鲜窗口(67% 未见过),15k 步 ≈ 0.77 epochs,远离记忆化区间。
+
+```bash
+nohup env HF_HUB_DISABLE_XET=1 .venv-arm64/bin/python -u -m examples.train_small_lm \
+  --dataset roneneldan/TinyStories --dataset-config "" \
+  --resume checkpoints/tinystories_mps_mid_mythos_seq384_v9.pt \
+  --steps 15000 --batch-size 8 --seq-len 384 --device mps \
+  --lr 3e-4 --eos-loss-weight 4.0 --model-size mid \
+  --train-tokens 60000000 --eval-tokens 200000 \
+  --eval-every 1000 --eval-batches 20 --log-every 100 --save-every 1000 \
+  --seed 7 --out checkpoints/tinystories_mps_mid_mythos_seq384_v9.pt \
+  > runs/train_v9_t5_freshdata.log 2>&1 &
+```
+
+- **续跑前归档检查**:60k 已归档(`openmythos_tinystories_mid_38m_step60000_seq384_v9.pt`)✓
+- 验收(mid-v1 preset,256 严格):endings ≥ 40/60 · weak ≤ 29 · repeated ≤ 14 · EOS 60/60 · val 回退 ≤ 0.01
+- 判读:endings 35→38+ 则继续加数据量;平台化则 T5 判负,结论收敛为"TinyStories 语料质量上限"

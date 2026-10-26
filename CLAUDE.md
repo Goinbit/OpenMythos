@@ -373,7 +373,27 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · T3b 终判:v9 60k 完成,val/EOS 达标,endings 35/60 待数据侧
+## 2026-10-24 · T5 启动:60M 新鲜数据预算 resume 至 75k
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T5(数据侧)
+
+### ✅ 完成
+- T5 方案定案:T3b 终判的 weak(35)/repeated(17)结构性根因是 20M 预算 × 9.2 epochs;**60M 预算(3 倍)resume 续跑至 75k**——数据集按流序确定性收集,新增 ~104k 新鲜窗口(67% 未见过),15k 步 ≈ 0.77 epochs
+- 已启动(nohup PID 27801,60M 分词 ~20 分钟 + 训练 ~2.7h),日志 `runs/train_v9_t5_freshdata.log`;60k checkpoint 续跑前已确认归档(教训执行)
+- runbook §7 固化 T5 命令与验收线(endings ≥ 40 · weak ≤ 29 · repeated ≤ 14 · EOS 60/60 · val 回退 ≤ 0.01,全部 mid-v1 preset 256 严格)
+
+### 📊 测试变化
+- 无代码变更,纯训练迭代
+
+### 🔑 关键决策 / 发现
+- **选"旧模型 + 新数据"而非"从头 + 大预算"**:后者 7h+ 且丢弃 60k 步成果;前者 2.7h 直接检验"新鲜数据重开改进通道"假设,失败也保留结论价值
+- resume 不记录 train_tokens,预算变更合法(与 packing/quant 不同,它不是模型语义)——该设计无意中成全了这条路径
+- TinyStories 全集 ~500M tokens:若 T5 达标,"数据预算随步数线性放大"即可成为正式配方
+
+### 🧭 留到下阶段
+- 75k 双预算 gate 判读:endings 35→38+ 则继续加数据;平台化则 T5 判负,结论为语料质量上限
+- 上游 PR 仍待用户决策
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — T3b v9 收官
