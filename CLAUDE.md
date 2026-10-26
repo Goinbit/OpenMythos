@@ -373,7 +373,28 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · T3b 扩容启动:`--model-size` 预设交付 + v9(mid 37.7M)从头长跑
+## 2026-10-24 · v9 中途判读:45k 验收三项过二,EOS 双预算全绿,续跑 60k
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — T3b v9 训练中途验收
+
+### ✅ 完成
+- v9 30k 跑完:val **1.5515**(差 0.0015);生成 gate 揭示 EOS 为预算伪影(376 全预算 60/60)但 endings 26/60 未达——"生成素养滞后于 loss"假设待验证
+- `--resume` 续 15k 至 45k 完成:val **1.5142** ✓(<1.55 达成,32k 首次跌破);**EOS 60/60 双预算全绿** ✓(256 严格预算也全停,伪影消失);endings 26→**30/60**、missing 34→30、repeated 18→14(追平基线)、overlap 0.41→0.43、词数 93→82.5
+- 判读:质量指标全面向 v6.1 收敛且部分轴追平/反超(repeated/drift),"素养追赶"假设**证实**;endings 距目标 ≥40 还差 10,斜率 +4/15k 步
+- 已启动 45k→60k 续跑(nohup PID 11985,~2.7h),日志同 `runs/train_v9_mid_scaling.log`
+
+### 📊 测试变化
+- 无代码变更;新增评估报告 ×3(30k/45k 双预算,`runs/generation_eval_179297*.md` / `1792994*.md`)
+
+### 🔑 关键决策 / 发现
+- **EOS 预算伪影的消失轨迹**(30k 时 256 预算 58/60 → 45k 全停)与 v6.1 自己"strict-256 59/60 → 训练充分后全停"的历史同构:EOS 判读必须双预算对照
+- val 与生成质量的追赶时差在小模型从头训练中真实存在:loss 先达标 ~15k 步后行为素养才到——T3b 验收必须等生成指标,不能 loss 达标即收
+- 256/376 双预算评估在样本全部早停时会产出逐字节相同的报告(45k 两份报告完全一致即此证明),非脚本错误
+
+### 🧭 留到下阶段
+- 60k 判读:endings 趋势(30→? 若 ≥34 续跑 75k;平台化则启动 mid 专属 preset 微调,免费变量)
+- 达标后按 runbook §5 归档(复制 + SHA256 + 模型卡);T3b 验收线 val<1.55 ✓ / EOS 60/60 ✓ / endings ≥40 待决
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T3b
