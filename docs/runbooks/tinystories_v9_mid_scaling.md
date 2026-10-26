@@ -111,3 +111,19 @@ nohup env HF_HUB_DISABLE_XET=1 .venv-arm64/bin/python -u -m examples.train_small
 - **续跑前归档检查**:60k 已归档(`openmythos_tinystories_mid_38m_step60000_seq384_v9.pt`)✓
 - 验收(mid-v1 preset,256 严格):endings ≥ 40/60 · weak ≤ 29 · repeated ≤ 14 · EOS 60/60 · val 回退 ≤ 0.01
 - 判读:endings 35→38+ 则继续加数据量;平台化则 T5 判负,结论收敛为"TinyStories 语料质量上限"
+
+### T5 结果(2026-10-24 · 75k 完成)
+
+| 指标 | 60k | **75k(T5,60M 新鲜数据)** | 验收线 | 判定 |
+|---|---|---|---|---|
+| val | 1.5130 | **1.4569** | <1.55 | ✅ 破平台 −0.056 |
+| EOS(256 严格) | 60/60 | **60/60** | 红线 | ✅ |
+| repeated_trigram | 17 | **6** | ≤14 | ✅ 基线的 43% |
+| missing_ending | 25 | **24** | ≤27 | ✅ 超基线 |
+| story endings | 35/60 | **36/60** | ≥40 | ❌ 斜率 +1/15k |
+| weak_prompt_adherence | 35 | **35** | ≤29 | ❌ 两轮未动 |
+
+**终判:** T5 证实"新鲜数据重开改进通道"(val −0.056、repeated 减半、故事更紧凑 75.8 词),
+但 weak 顽固不动 + endings 斜率衰减表明**继续堆训练低性价比**。weak 差距的合理解释是启发式判据
+对高多样性写作系统性偏严,剩余杠杆:语料规模/多样性、weak 判据人工校准——均为新会话级工作。
+归档:`openmythos_tinystories_mid_38m_step75000_seq384_v9_t5.pt`(SHA256 `24033aa0…`)+ 模型卡。

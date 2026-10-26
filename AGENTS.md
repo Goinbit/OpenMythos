@@ -252,7 +252,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
-| small LM 本机轨道(计划外) | 🟡 T3b 判决:v9 60k | val 1.5130 ✓ · EOS 60/60 ✓ · endings 35/60 ❌(数据侧待做);v9+mid-v1 为新基线([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
+| small LM 本机轨道(计划外) | 🟡 T5 判决:v9-T5 75k 最佳 | val 1.4569 · EOS 60/60 · repeated 6 · missing 24 全部达标/超基线;endings 36/60 · weak 35 待语料/判据工作([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
@@ -373,7 +373,28 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · T5 启动:60M 新鲜数据预算 resume 至 75k
+## 2026-10-24 · T5 终判:75k 完成,val/repeated/missing 创历史最佳,endings 36 差 4
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T5 数据侧
+
+### ✅ 完成
+- T5 跑完:60M 预算(156,250 窗口,0.77 epochs)resume 至 75k,val **1.4569**(60k 平台 1.5130 → 破平台 −0.056)
+- **75k 验收(mid-v1,双预算逐字节一致 = 全部 256 内自然停止)**:EOS 60/60 ✓ · repeated **6**(17→6,基线 14 的 43%)✓ · missing **24**(超基线 27)✓ · endings **36/60**(差 4,斜率衰减至 +1/15k)❌ · weak **35**(唯一顽固项,60k→75k 纹丝不动)❌ · 词数 88→75.8(更紧凑)
+- 归档:`openmythos_tinystories_mid_38m_step75000_seq384_v9_t5.pt`(SHA256 `24033aa0…`)+ 新模型卡;runbook §7 结果表;计划文档 T5 终判
+- **终判:继续堆训练低性价比**——weak 对两轮干预(更多步数、新鲜数据)均无响应,指向启发式判据对高多样性写作系统性偏严,而非训练不足
+
+### 📊 测试变化
+- 无代码变更,纯训练/评估迭代;新增评估报告 ×2(`runs/generation_eval_1793016390.md` / `_1793016459.md`)
+
+### 🔑 关键决策 / 发现
+- **新鲜数据假说证实**:同样 15k 步,20M 旧数据段(45k→60k)val +0.000/repeated 恶化,60M 新鲜段(60k→75k)val −0.056/repeated 减半——数据多样性是这一规模下的一阶杠杆
+- **weak-prompt-adherence 判据与多样性的张力**:repeated 6 + weak 35 是同一现象两面(更少复读 prompt/模板词);启发式判据校准需人工抽检背书,已列为候选工作
+- "旧模型 + 新数据" 路径 2.7h 验证完毕,从头大预算重训(7h+)被证实不必要
+
+### 🧭 留到下阶段
+- 候选工作(需用户选择投入):① 语料规模扩展(>100M tokens 级);② weak 启发式人工校准(抽样 60 条对读);③ 上游 PR 决策(所有轨道工作均已推送 fork)
+- v9-T5 75k 为交付基线;6 个本地模型卡 + 完整 gate 工具链构成完整 small LM 交付物
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T5(数据侧)

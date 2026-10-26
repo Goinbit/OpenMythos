@@ -97,10 +97,10 @@ preset 对比已收敛:`coherence-v2` 为自然 EOS-bounded 评估推荐,`compac
 
 - **T3a seq512 warm-start:** 工具已具备(`examples/resize_small_lm_context.py`),目标让完整故事弧进窗,直接攻击 endings。验收:val loss < 1.60,endings ≥ 40/60
 - **T3b 模型扩容 15.8M → ~35M:** `train_small_lm.py` 增加模型尺寸预设/CLI(dim 256→384)。验收:val loss < 1.55,endings ≥ 40/60。成本:训练时间 ×2-3
-  > **实施状态(2026-10-24 终判):** v9(mid 37.7M)60k 完成:**val 1.5130 ✓(<1.55)· EOS 60/60 严格-256 ✓
-  > (mid-v1 preset)· endings 35/60 vs ≥40 ❌**。45k→60k 生成指标平台化 + repeated 恶化(~9.2 epochs 记忆化前兆)
-  > → 停止堆步数;endings/weak 下一杠杆在数据侧。checkpoint 与模型卡已归档,详见
-  > [runbooks/tinystories_v9_mid_scaling.md §6](runbooks/tinystories_v9_mid_scaling.md)。
+  > **实施状态(2026-10-24 · T5 终判):** v9-T5(mid 37.7M,75k)为当前最佳:**val 1.4569 · EOS 60/60 严格-256 ·
+  > repeated 6(基线 43%)· missing 24(超基线)· endings 36/60(距 ≥40 差 4,斜率 +1/15k)· weak 35(唯一顽固项,
+  > 两轮未动)**。T5 证实新鲜数据重开改进通道;剩余差距指向语料规模/多样性或 weak 启发式判据校准,
+  > 继续堆训练低性价比。详见 [runbooks/tinystories_v9_mid_scaling.md §7](runbooks/tinystories_v9_mid_scaling.md)。
 
 ### T4 — 评估验收工具化(与 T1 训练并行)
 
