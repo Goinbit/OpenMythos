@@ -175,3 +175,28 @@ nohup env HF_HUB_DISABLE_XET=1 .venv-arm64/bin/python -u -m examples.train_small
 - 验收(校准判据,mid-v1 preset 256 严格):**drift ≤ 8** 且 val/EOS/endings/repeated/missing 不回退
 - 判读:drift 达标 → T6 成立,"名字平衡化"进正式数据配方;未达 → 劫持非纯频率问题,记录后收束 small LM 轨道
 - metadata:`balance_names` 字段 + resume/init-from 守卫(同 packing 模式)
+
+**运行状态(2026-10-27 01:00):** PID 60242(00:09 启动,MPS)运行中,step 78.2k/90k,
+tok/s ~3.9k,val 1.6387@76k / 1.6563@77k / 1.6497@78k。相对 T5 终值 1.4569 抬升约 0.19,
+预期为名字平衡化分布切换 vs 规范评估语料的瞬态(评估仍用原始 Lily 偏置语料),
+观察 80k 后是否回落;checkpoint 已随 save-every=1000 覆盖写至 t6 文件,T5 最佳不受影响。
+预计 ~04:20 完成,完成后跑 60 样本 eval(mid-v1 preset 256 严格 + 校准判据)出终判。
+
+### T6 结果(2026-10-27 · 90k 完成,未过 gate,轨道收束)
+
+| 指标 | T5 75k(交付基线) | T6 90k(名字平衡化) | 验收线 | 判定 |
+|---|---|---|---|---|
+| drift | 11 | **9** | ≤ 8 | ❌ 差 1(改善但不足) |
+| endings | **36/60** | 29-30/60 | 不回退 | ❌ −6 |
+| missing | **24** | 30-31 | 不回退 | ❌ |
+| repeated | **6** | 9 | 不回退 | ✅ 仍优于基线 14 |
+| EOS(256/376) | 60/60 | 59/60 / 60/60 | 红线 | ❌ 边缘长尾 |
+| val(canonical) | 1.4569 | 1.6738 | 参考 | 分布迁移成本 |
+
+**终判:交换不划算。** drift 11→9 证实劫持部分源于名字频率,但硬替换到稀有名(Ivy/Zoe/Maya
+等)拆掉了故事模板"名字槽"的统计连续性,endings/missing 各付 −6/+6。**按预登记规则收束
+small LM 轨道:T5(75k)为最终交付基线。** checkpoint 归档为
+`openmythos_tinystories_mid_38m_step90000_seq384_v9_t6_failed_gate.pt`(对照保留)。
+
+若未来重启:候选修正 = 平衡池扩到高频名带(Tom/Ben/Timmy 级)而非稀有名,或平衡/规范 50/50
+混合以保留模板统计——均为新会话工作,当前不再投入训练时间。

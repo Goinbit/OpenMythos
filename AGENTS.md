@@ -252,7 +252,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
-| small LM 本机轨道(计划外) | 🟡 T5+校准终判 | v9-T5 75k 最佳:val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · weak 校准后平手;**drift 11 vs 8 = 真实差距**(数据侧候选 T6)([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
+| small LM 本机轨道(计划外) | ✅ 收束(T1-T6) | **最终交付 v9-T5 75k**:val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · endings 36/60;T6 平衡化负交换已记录([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
@@ -373,7 +373,33 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-24 · weak 判据人工校准:49% 误报证实,真实差距定位到 drift
+## 2026-10-27 · T6 终判:名字平衡化交换不划算,small LM 轨道收束
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T6(数据侧)终判
+
+### ✅ 完成
+- **根因量化**:50k 故事抽样,`Lily` 出现于 **150%** 的故事(第二名 Tom 53%,3 倍断层)——"卡壳就喊 Lily"是语料分布的直接镜像
+- **T6 实现(TDD)**:`balance_names`(确定性哈希轮换高频名→10 名平衡池,逐故事一致/逐名不碰撞)入 `small_lm_data.py`,stream/story 双路径接线,`--balance-names` CLI + metadata + resume/init-from 守卫;303 passed(+5)
+- **T6 训练**(75k→90k,60M 预算,输出独立文件——45k 覆盖教训执行;T5 归档件全程未动):canonical val 1.6738(分布迁移成本,预期内)
+- **T6 验收(校准判据,mid-v1 256 严格)**:drift **11→9**(改善但未达 ≤8)· endings **36→29** ❌ · missing 24→30 ❌ · repeated 9(仍优于基线 14)· EOS 59/60(376 全停,边缘长尾)
+- **终判:交换不划算**——drift 部分证实频率假说,但硬替换到稀有名(Ivy/Zoe/Maya)拆掉故事模板"名字槽"统计连续性,故事完整度付出 −6/+6。按预登记规则收束轨道
+- 归档:`openmythos_tinystories_mid_38m_step90000_seq384_v9_t6_failed_gate.pt`(SHA256 `2ff04c3d…`,对照保留);runbook §9 + 计划文档收束
+
+### 📊 测试变化
+- before: 298 passed / 0 skipped
+- after: **303 passed** / 0 skipped(+5:确定性替换/中性名不动/映射不碰撞/池来源/stream 路径)
+- mypy 0 errors / ruff 干净;新增评估报告 ×2(256/376)
+
+### 🔑 关键决策 / 发现
+- **T6 是"用结构完整性换人名多样性"的负交换**:名字槽是 TinyStories 模板统计的承重墙,替换增强必须保槽内分布(扩池到高频名带或 50/50 混合),而非换到尾部名
+- **输出到独立文件 + 训练前验证归档 SHA** 的操作纪律在本轮两次生效(T5 归档件 `24033aa0…` 未动)
+- 校准判据 + 双预算评估在 T6 判决中交付了干净的读数:drift 改善是真的、代价也是真的
+
+### 🧭 轨道终局
+- **small LM 轨道收束:最终交付 = v9-T5 75k**(val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · endings 36/60,SHA256 `24033aa0…`)+ 12 模型卡 + 3 runbook + gate 工具链 + T1-T6 全过程数据
+- 若未来重启:平衡池保槽内分布 / 语料规模扩展 / LLM judge,均为新会话工作
+- 上游 PR 决策仍待用户(全部工作已推送 fork)
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — T5 后置校准轮

@@ -97,10 +97,18 @@ preset 对比已收敛:`coherence-v2` 为自然 EOS-bounded 评估推荐,`compac
 
 - **T3a seq512 warm-start:** 工具已具备(`examples/resize_small_lm_context.py`),目标让完整故事弧进窗,直接攻击 endings。验收:val loss < 1.60,endings ≥ 40/60
 - **T3b 模型扩容 15.8M → ~35M:** `train_small_lm.py` 增加模型尺寸预设/CLI(dim 256→384)。验收:val loss < 1.55,endings ≥ 40/60。成本:训练时间 ×2-3
-  > **实施状态(2026-10-24 · T5+校准终判):** v9-T5(75k)为当前最佳:**val 1.4569 · EOS 60/60 严格-256 ·
-  > repeated 6 · missing 24 · endings 36/60**。weak 判据经 60 样本人审校准(49% 误报为代词续写),
-  > 校准后 weak 5 vs 基线 3(平手);**真实剩余差距是 character_drift 11 vs 8(Lily 劫持)**,
-  > 数据侧杠杆 = 语料名字平衡化。详见 [runbooks/tinystories_v9_mid_scaling.md §8](runbooks/tinystories_v9_mid_scaling.md)。
+  > **实施状态(2026-10-27 · 轨道收束):** v9-T5(75k)为**最终交付基线**:val 1.4569 · EOS 60/60 严格-256 ·
+  > repeated 6 · missing 24 · endings 36/60。weak 判据经 60 样本人审校准(49% 误报,代词续写),
+  > 校准后与基线平手。T6 名字平衡化(90k)实测:drift 11→9(未达 ≤8)但 endings/missing 各付
+  > −6/+6,**交换不划算,轨道按预登记规则收束**。全过程数据与教训见
+  > [runbooks/tinystories_v9_mid_scaling.md §6-9](runbooks/tinystories_v9_mid_scaling.md)。
+  >
+  > **T6 进行中(2026-10-27 01:00 快照):** 名字平衡化(替换增强 `--balance-names`,Lily 150% →
+  > 10 名平衡池)续训 75k→90k,输出到 `tinystories_mps_mid_mythos_seq384_v9_t6.pt`(不覆盖 T5)。
+  > 当前 step 78.2k,val 1.6497@78k(76k 1.6387 / 77k 1.6563)——相对 T5 的 1.4569 有抬升,
+  > 预期为训练分布切换(平衡名)vs 规范评估语料的瞬态,观察 80k 后是否回落;tok/s ~3.9k,
+  > 预计 ~04:20 跑完。验收(校准判据):**drift ≤ 8** 且 val/EOS/endings/repeated/missing 不回退;
+  > 达标则名字平衡化进正式数据配方,未达则收束 small LM 轨道。
 
 ### T4 — 评估验收工具化(与 T1 训练并行)
 
