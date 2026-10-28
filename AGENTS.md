@@ -253,6 +253,8 @@ All work in this project must reference the phase/item below when opening a PR (
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
 | small LM 本机轨道(计划外) | ✅ 收束(T1-T6) | **最终交付 v9-T5 75k**:val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · endings 36/60;T6 平衡化负交换已记录([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
+| 深度外推实验(可行性门) | 🔴 判负(2026-10-27) | 外推不存在;深度买算力但 parity 不可扩展;**Phase 2 架构赌注关闭**([设计](docs/depth_extrapolation_experiment.md) · [路线](docs/commercial_roadmap.md)) |
+| 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
 **本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
@@ -373,7 +375,36 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
-## 2026-10-27 · T6 终判:名字平衡化交换不划算,small LM 轨道收束
+## 2026-10-27 · 深度外推决定性实验:负结果,商用路线据此收敛
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
+**Agents:** 无 · **完成 IDs:** 无新 ID — 项目可行性门实验(预注册)
+
+### ✅ 完成
+- **预注册设计** `docs/depth_extrapolation_experiment.md`:算法试金石(进位加法/奇偶校验)+ 小词表(vocab 13,参数集中循环块)+ 读数标准先于实验固化
+- **实现(TDD)** `examples/depth_extrapolation.py`(346 行):任务生成/答案位掩码训练/贪心解码/配对扫描(同测试集跨 loops);310 passed
+- **首轮污染运行**暴露 mask 稀释 bug(pad 目标稀释真信号,parity 假学会)与长度失衡(90% 挤 4 位桶);修正后重启(`a7fb78a`)
+- **修正版全套 8 阶段完成**,终局:
+  - add@4:1循环 1.7% → **4循环 98.7%**(深度真实参与);8/16/32 全部 98.7%(外推持平)
+  - add@16:自深度 93.7%(反低于 add@4,长展开伤优化),32 循环外推持平
+  - parity@4 与 parity@16:**全程 ½ln2 平台,连 16 循环训练都学不会 32 位奇偶**
+- **终判(预注册标准):H1 推理期外推 = 负结果;H2 修正 = 深度买算力但不可扩展**。架构核心卖点("循环深度 = 推理倍增器")不成立
+- **商用路线收敛** `docs/commercial_roadmap.md`:Gate 0a 判负 → **Phase 2(GPU 架构赌注)关闭**;商用分支只剩 Gate 0b(垂直领域专有数据 MVP,唯一被证据支持的形态)与 Phase 3(资产化);不做清单固化
+
+### 📊 测试变化
+- before: 303 passed / 0 skipped
+- after: **310 passed** / 0 skipped(+7:任务生成/掩码对齐/答案校验/扫描形状)
+- ruff 干净
+
+### 🔑 关键决策 / 发现
+- **实验方法论两次自证价值**:首轮 mask 稀释产生虚假平坦信号,中途判读(训练 loss 精确 = ½ln2 + eval 随机)抓出;修正后的平坦才是可信负结果
+- **"更多循环 ≠ 更好"**:add@16 优化反伤(93.7% vs 98.7%)——长展开下的优化难度是独立于能力的问题
+- 架构叙事关闭后,项目商用价值收敛为:管线/方法论/数据护城河(后者取决于用户领域数据访问权)
+
+### 🧭 留给用户决策
+- Gate 0b:是否存在专有领域数据/访问权(唯一可启动 Phase 1 垂直 MVP 的前提)
+- 上游 PR:80+ 提交在 fork,从未合入 main
+- GPU 项:Stage 5 / 3B QAT 的架构动机已随 Gate 0a 判负大幅减弱,仅剩通用规模验证价值
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
 **Agents:** 无 · **完成 IDs:** 无新 ID — 迭代计划 T6(数据侧)终判
