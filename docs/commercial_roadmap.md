@@ -41,7 +41,10 @@
   三个时间分段 IC 全部同号(−0.317/−0.174/−0.255,样本外稳定),effectiveness 0.791 / win_rate 52%
   全过 V3 条件;与 V3 人工榜(top12 波动率族)互补、无重复。待办:FactorMiner 重构稳定后接
   `mcp_server/mining_server.py` 对齐其精确打分,并入 freqtrade 信号层回测
-- **M3 freqtrade 事件守卫**(沿用前轮设计):新闻分类 → 高影响事件降仓/暂停
+- **M3 事件守卫 — ✅ MVP 完成(2026-10-28)**:`QuantKB/quantkb/event_guard.py` — 词典 v0
+  (PAUSE/REDUCE 两档 18 条规则)+ 真实数据冲击校准(BTC 24h |ret| p95 = **2.88%**,36/712 窗口)+
+  freqtrade / hyperliquid-hft 双接入示例;升级路径:新闻采集(CryptoPanic token 待用户开通)→
+  微调小模型替换词典,`assess()` 合同不变
 - 验收:M2 产出的因子必须过用户现有 IC 筛选(≥60% 一致性等 5 条),且研究迭代周期(假设→验证)实测缩短;LLM 生成因子与人工因子同 gate 同标准
 - 变现形态:先增强自有交易系统(PnL 即回报),研究自动化成熟后可产品化为量化研究工具
 

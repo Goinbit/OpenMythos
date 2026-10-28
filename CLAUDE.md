@@ -375,6 +375,34 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-28 · M3 事件守卫 MVP:词典 v0 + 真实冲击校准 + 双引擎接入
+
+**分支:** QuantKB(dbf013c)+ OpenMythos 本条目 · **Agents:** 无
+
+### ✅ 完成
+- **预注册设计** `docs/event_guard_design.md`:PAUSE(存在性)/REDUCE(高影响)/NORMAL 三档
+  单向风险闸(只降停不加仓);诚实边界声明(词典 v0 可被微调模型击败;无实盘新闻回测)
+- **实现(TDD)** `event_guard.py`:18 条 crypto 事件规则(词典 v0),最强档位裁决,全量命中记录
+- **真实数据校准**:BTC_USDT 1h(736 bars)24h |return| **95 分位 = 2.88%**,36/712 冲击窗口,
+  存档 `docs/shock_calibration_btc.md`
+- **双引擎接入示例**:freqtrade `confirm_trade_entry` + hyperliquid-hft 风控前置,`assess()` 合同不变
+- QuantKB 23 passed(16+7);路线文档 M3 状态更新
+
+### 📊 测试变化
+- QuantKB: 16 → **23 passed**(+7:原型标题分档/depeg/cascade 档位/最强档胜出/冲击阈值)
+
+### 🔑 关键决策 / 发现
+- 词典必须小写化(交替组 `(?:SEC|CFTC)` 不受单词替换波及);合成 24h 收益冲击需**持续台阶**而非单根脉冲
+- liquidation cascade 归 PAUSE 档(设计文档 §1 存在性风险),测试期望与设计对齐
+- 冲击校准 2.88% 是守卫的历史锚点:PAUSE 命中即视为冲击市况,技术信号让位
+
+### 🧭 留到下阶段
+- 新闻数据采集(CryptoPanic token 需用户开通)→ 自动标注 → 微调分类器替换词典 v0
+- 事件守卫接入 hyperliquid-hft 实盘风控(用户执行)
+- 上游 PR 仍待用户决策
+
+---
+
 ## 2026-10-28 · M2 收尾:完整 V3 gate + walk-forward 样本外验证
 
 **分支:** QuantKB(ca29838→af71cd4)+ OpenMythos 本条目 · **Agents:** 无
