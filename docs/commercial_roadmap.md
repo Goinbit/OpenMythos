@@ -50,6 +50,10 @@
   29 tests)机制全过;但 30 天窗口 naive 信号→仓位不产生超额(**费率主导**:550-880bp 换手成本
   vs IC≈0.13 边际)。结论:IC≠PnL,下一杠杆在降换手(hysteresis)与更长历史;freqtrade 策略
   工件已产出(`QuantKB/freqtrade_strategies/`)供用户环境完整回测
+- **M4b 降换手 — ✅ 完成(2026-10-28)**:hysteresis(死区状态机:阈值模式双阈值 /
+  符号模式 ±band)+ EMA 平滑 — **两个负 Sharpe 因子全部转正**(momentum_div −2.41→**+1.36**,
+  跑赢同窗 buy&hold −0.90;range_position +0.35/maxDD 3.03% 全场最优),费用砍 60-84%。
+  样本警告:30 天/3-26 笔,band 同数据调参,>1 年历史重测后方可置信;EMA 逐因子校准(momentum_div 上有害)
 - 变现形态:先增强自有交易系统(PnL 即回报),研究自动化成熟后可产品化为量化研究工具
 
 ### Phase 2 · 架构规模化验证 — 已关闭(Gate 0a 判负)

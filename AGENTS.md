@@ -375,6 +375,31 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-28 · M4b 降换手终跑:hysteresis 把两个负 Sharpe 因子全部转正
+
+**分支:** QuantKB(af1fc17)+ OpenMythos 本条目 · **Agents:** 无
+
+### ✅ 完成
+- **hysteresis 实现(TDD)**:死区状态机——阈值模式(进场 <entry,离场 >exit,带内维持)+ 符号模式(±band 死区)+ EMA 平滑;32 passed(+3)
+- **真实数据对照**:range_position 55→9 笔/费用 550→90bp/**+0.35%(maxDD 3.03% 全场最优,唯一正 Sharpe +0.35 之一)**;momentum_div 88→26 笔/880→260bp/**−2.41→+1.36 Sharpe,跑赢同窗 buy&hold**
+- freqtrade 工件更新为调参后版本(entry/exit 双阈值 + 死区,正则验证写入)
+- M4b 结果与样本警告入设计文档 §6;路线文档更新
+
+### 📊 测试变化
+- QuantKB: 29 → **32 passed**(+3:滞回降换手/死区维持/EMA 降翻转)
+
+### 🔑 关键决策 / 发现
+- **M4 负读数的主因被 M4b 证实并解决**:费用 60-84% 砍除后两因子转正——"IC 有信号、映射太糙"的判断成立
+- EMA 平滑**逐因子校准**(range_position 受益、momentum_div 有害),不能默认叠加
+- 诚实边界:30 天 / 3-26 笔有效交易、band 同数据调参——**机制证据已足,信号置信待 >1 年历史**
+
+### 🧭 留到下阶段
+- >1 年 BTC 1h 历史拉取(交易所 API / FactorMiner downloader)→ 滞回参数外样本验证
+- M3 新闻采集(CryptoPanic token)与守卫实盘接入
+- 上游 PR 决策
+
+---
+
 ## 2026-10-28 · M4 因子→PnL 回测:机制过、绩效负(费率主导),Phase 1 收官
 
 **分支:** QuantKB(35330a9)+ OpenMythos 本条目 · **Agents:** 无
