@@ -375,6 +375,36 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-28 · M4 因子→PnL 回测:机制过、绩效负(费率主导),Phase 1 收官
+
+**分支:** QuantKB(35330a9)+ OpenMythos 本条目 · **Agents:** 无
+
+### ✅ 完成
+- **预注册设计**(`docs/m4_factor_backtest_design.md`):硬门槛(机制)与信息层(绩效)分层声明,
+  30 天窗口只验管线不证盈利预先写死
+- **向量化回测(TDD)**:long/flat、防未来函数(仓位=t−1 因子)、含费、buy&hold 同窗对照;
+  双模式(符号 + `long_below` 阈值——range_position 值域 [0,1] 永远非负,符号模式语义错误,阈值才是均值回归正解);oracle 对齐修正一次(自身滞后与回测滞后叠加的双重 shift bug)
+- **真实数据终跑(诚实负读数)**:buy&hold −2.56%;range_position −3.14%(maxDD 5.02% 占优);
+  momentum_divergence −4.20%——**费率主导**(550/880bp 换手成本 vs IC≈0.13 边际)
+- **freqtrade 策略工件**:`QuantKB/freqtrade_strategies/Quantkb*.py`(用户环境含滑点/资金费回测)
+- QuantKB 29 passed;路线文档 M4 状态
+
+### 📊 测试变化
+- QuantKB: 23 → **29 passed**(+6:滞后/无费 oracle/费用/翻转/回撤/阈值模式)
+
+### 🔑 关键决策 / 发现
+- **IC ≠ PnL 是 M4 的核心结论**:截面预测力(rank IC 0.12-0.13)扛不住 180bp/月的 naive 换手;
+  改进方向是降换手(hysteresis 进出场/事件化)而非更多因子
+- 有界因子([0,1])必须用阈值语义,符号语义在 direction 翻转下退化为全平仓——因子值域决定信号映射方式
+- Phase 1 至此 M1-M4 全交付:知识库/研究环/事件守卫/回测,全部带预注册与诚实读数
+
+### 🧭 留到下阶段
+- 降换手变体(hysteresis)+ 更长历史数据(>1 年 1h)重测——数据侧需用户开通交易所历史下载
+- 事件守卫实盘接入(hyperliquid-hft)与新闻采集(CryptoPanic token)待用户
+- 上游 PR 决策
+
+---
+
 ## 2026-10-28 · M3 事件守卫 MVP:词典 v0 + 真实冲击校准 + 双引擎接入
 
 **分支:** QuantKB(dbf013c)+ OpenMythos 本条目 · **Agents:** 无
