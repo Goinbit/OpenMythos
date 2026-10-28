@@ -49,7 +49,10 @@ def id_char(idx: int) -> str:
 
 def make_addition_instance(rng: torch.Generator, max_digits: int) -> TaskInstance:
     def draw() -> int:
-        return int(torch.randint(1, 10**max_digits, (1,), generator=rng).item())
+        # Uniform digit count: skew toward 4-digit gives ~90% one bucket.
+        digits = int(torch.randint(1, max_digits + 1, (1,), generator=rng).item())
+        low = 1 if digits == 1 else 10 ** (digits - 1)
+        return int(torch.randint(low, 10**digits, (1,), generator=rng).item())
 
     a, b = draw(), draw()
     return TaskInstance(
@@ -86,6 +89,7 @@ def encode_instance(
     ids = [char_id(c) for c in instance.input_text]
     first_answer = len(ids)
     ids += [char_id(c) for c in instance.answer_text] + [eos_id]
+    answer_end = len(ids)  # last trained target = the single terminating EOS
     if len(ids) > seq_len + 1:
         raise ValueError(
             f"instance needs {len(ids)} positions > seq_len+1={seq_len + 1}"
@@ -93,7 +97,7 @@ def encode_instance(
     ids += [eos_id] * (seq_len + 1 - len(ids))
     total = torch.tensor(ids, dtype=torch.long)
     mask = torch.zeros(seq_len, dtype=torch.float32)
-    mask[first_answer - 1 :] = 1.0
+    mask[first_answer - 1 : answer_end - 1] = 1.0
     return total[:-1], total[1:], mask
 
 

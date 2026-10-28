@@ -34,8 +34,10 @@ def test_encode_instance_masks_prompt_targets():
     x, y, mask = dx.encode_instance(instance, seq_len, dx.EOS_ID)
 
     prompt_len = len("12+3=")
+    answer_len = len("51") + 1  # digits + terminating EOS
     assert mask[: prompt_len - 1].sum() == 0  # prompt-internal targets masked
-    assert mask[prompt_len - 1 :].sum() == seq_len - (prompt_len - 1)  # answer+EOS trained
+    assert mask[prompt_len - 1 :].sum() == answer_len  # answer digits + one EOS only
+    assert mask.sum() == answer_len  # pad targets must stay masked (mask-dilution bug)
     assert y[prompt_len - 1].item() == dx.char_id("5")  # first answer target
     assert x[0].item() == dx.char_id("1")
 
