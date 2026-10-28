@@ -30,7 +30,10 @@
 
 ### Phase 1 · FactorMiner 研究自动化 MVP(2-4 周 · 本地 · 零现金,Gate 0b 已通过)
 
-- **M1 知识库 RAG 助手**(数天):51 笔记入库检索问答(因子状态/系统架构/go-live 清单),自用即有效
+- **M1 知识库 RAG 助手 — ✅ 完成(2026-10-28)**:`~/Desktop/Claude/QuantKB`(独立仓库,246 行,纯标准库)
+  — BM25 + CJK bigram 分词,双语料 1360 passages,三组中英查询实测精准命中(IC 筛选/freqtrade/go-live);
+  `python -m quantkb.kb "query" -k N` 即用。M2 接入要点:FactorMiner 自带 `mcp_server/mining_server.py`
+  (FactorMiningAPI),研究自动化环走 MCP 即可,无需新管道
 - **M2 研究自动化环**(核心价值):LLM 因子假设生成 → 候选因子代码 → 接入 FactorMiner 自动跑 IC 验证(用户已有 gate)→ 达标因子自动归档为 vault 笔记格式(模板已存在)
 - **M3 freqtrade 事件守卫**(沿用前轮设计):新闻分类 → 高影响事件降仓/暂停
 - 验收:M2 产出的因子必须过用户现有 IC 筛选(≥60% 一致性等 5 条),且研究迭代周期(假设→验证)实测缩短;LLM 生成因子与人工因子同 gate 同标准
