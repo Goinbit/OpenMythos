@@ -375,6 +375,36 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-28 · 商用路线 Phase 1 启动:M1 QuantKB + M2 研究自动化环交付
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** QuantKB 仓库 ca29838/4b82638 + 本日志条目
+**Agents:** 无 · **完成 IDs:** 无新 ID — Phase 1 M1/M2
+
+### ✅ 完成
+- **Gate 0b 通过**:用户资产盘点(Obsidian ClaudeBrain 知识库 51 笔记 + FactorMiner 24k 行 + freqtrade 实盘生态)——护城河 = 已验证因子研究设施 + 实盘执行渠道;K 线预测维持排除
+- **FactorMiner 盘点**:24k 行生产级系统;`factor_evaluator.py` IC gate 函数库;**自带 mcp_server/mining_server.py**(M2 接入管道现成);本地已有 BTC_USDT 1h feather(736 bars)
+- **M1 QuantKB 交付**(`~/Desktop/Claude/QuantKB`,独立仓库,246 行纯标准库):BM25 + CJK bigram 知识库检索,双语料 1360 passages,三组跨语言查询实测精准命中;TDD 5 passed;真实语料验收通过
+- **M2 研究自动化环 MVP 交付**(`research_loop.py`):LLM 假设因子 → IC gate(MVP 版 V3 近似:|IC|≥0.03/一致性≥60%/|rank IC|≥0.02)→ vault 格式自动归档(draft 需人工复核);真实 BTC 数据首跑 **2/3 过 gate**(range_position −0.13、momentum_divergence +0.12、volume_thrust 诚实淘汰)
+- QuantKB 15 项测试全绿;路线文档 M1/M2 状态同步
+
+### 📊 测试变化
+- OpenMythos: 310 passed 不变(本轮交付在 QuantKB 仓库,15 passed)
+- 新增: QuantKB tests 5(kb)+ 10(research_loop)
+
+### 🔑 关键决策 / 发现
+- **M2 稳定接缝选 FactorEvaluator 语义而非 factor_mining_api**(后者处于重构区);MCP 路径留作完整 V3 筛选接入
+- 实验纪律延续:gate 测试用确定性构造(常数因子必挂)而非赌随机种子
+- 研究环产出自带诚实边界:status: draft + 人工复核要求写进笔记模板
+
+### 🧭 留到下阶段
+- M2 收尾:接 mining_server MCP 跑完整 V3 五条筛选、walk-forward 样本外验证、与人工因子排行榜对比
+- M3 事件守卫(freqtrade)未启动
+- 上游 PR 决策仍待用户(84+ 提交在 fork)
+
+---
+
+
+
 ## 2026-10-27 · 深度外推决定性实验:负结果,商用路线据此收敛
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** 本日志条目所在提交
