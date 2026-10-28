@@ -37,7 +37,10 @@
 - **M2 研究自动化环 — ✅ MVP 完成(2026-10-28)**:`QuantKB/quantkb/research_loop.py` — LLM 假设因子 →
   IC gate(MVP 版 V3 近似)→ vault 格式自动归档;真实 BTC_USDT 1h(736 bars)首跑 2/3 过 gate
   (range_position IC −0.13 / momentum_divergence IC +0.12 / volume_thrust 被诚实淘汰);
-  待办:接入 `mcp_server/mining_server.py` 跑完整 V3 五条筛选 + walk-forward 样本外验证
+  M2 收尾(2026-10-28):**完整 V3 五条筛选 + walk-forward 样本外验证已接入**——range_position 在
+  三个时间分段 IC 全部同号(−0.317/−0.174/−0.255,样本外稳定),effectiveness 0.791 / win_rate 52%
+  全过 V3 条件;与 V3 人工榜(top12 波动率族)互补、无重复。待办:FactorMiner 重构稳定后接
+  `mcp_server/mining_server.py` 对齐其精确打分,并入 freqtrade 信号层回测
 - **M3 freqtrade 事件守卫**(沿用前轮设计):新闻分类 → 高影响事件降仓/暂停
 - 验收:M2 产出的因子必须过用户现有 IC 筛选(≥60% 一致性等 5 条),且研究迭代周期(假设→验证)实测缩短;LLM 生成因子与人工因子同 gate 同标准
 - 变现形态:先增强自有交易系统(PnL 即回报),研究自动化成熟后可产品化为量化研究工具

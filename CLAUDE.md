@@ -375,6 +375,31 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-28 · M2 收尾:完整 V3 gate + walk-forward 样本外验证
+
+**分支:** QuantKB(ca29838→af71cd4)+ OpenMythos 本条目 · **Agents:** 无
+
+### ✅ 完成
+- **V3 五条筛选完整镜像实现**(research_loop.py,公式逐条对照 factor_evaluator.py 源码):effectiveness(0.4IC+0.3MI+0.2胜率+0.1换手)/win_rate(t−1 因子无未来函数)/IC 一致性/数据量/相关性去重(run 级)
+- **walk-forward 样本外验证**:三分段时间切分逐段 IC——**range_position 三段全部同号(−0.317/−0.174/−0.255)**,样本外跨期稳定;effectiveness 0.791 / win_rate 52% 过 V3 全条件
+- 与 V3 人工榜(top12 波动率族 7/12)对比:自动研究环发现的是**互补的区间位置族因子**,无重复
+- QuantKB 测试 16 passed;归档笔记含 effectiveness/win_rate/walk-forward 字段
+- 过程问题自纠:turnover 参数错传、archive f-string 变量序、行号手术搞乱后整体重写——教训:行号手术弃用,一律整函数重写
+
+### 📊 测试变化
+- QuantKB: 5 → **16 passed**(+6 V3/walk-forward,+1 archive 扩展)
+
+### 🔑 关键决策 / 发现
+- **walk-forward 是 M2 的决定性增强**:单窗口 IC 可能是伪影,三段同号才是样本外证据——研究环产出从"同窗口统计"升级为"跨期稳定证据"
+- 有效性公式镜像自带开放问题:V3 榜单得分 0.205 与文档公式无法对账(IC_30 截断后已 >0.5),说明其打分另有口径;MVP gate 用文档公式 + 从宽阈值,精确对账留待接 MCP
+
+### 🧭 留到下阶段
+- FactorMiner 重构稳定后接 mcp_server 对齐精确打分
+- 因子并入 freqtrade 信号层回测(事件守卫 M3 顺路)
+- 上游 PR 仍待用户决策
+
+---
+
 ## 2026-10-28 · 商用路线 Phase 1 启动:M1 QuantKB + M2 研究自动化环交付
 
 **分支:** `codex/sync-main-with-origin-20260524` · **commits:** QuantKB 仓库 ca29838/4b82638 + 本日志条目
