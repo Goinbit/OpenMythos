@@ -375,6 +375,42 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-30 · Goinmax 因子进研究栈跑 Gate 0-1:移植对账通过,Gate 1 判负
+
+**分支:** QuantKB(88c9a21/8208eb4/1dd2a29)+ Goinmax audit 分支(90fea16)+ 本条目 · **Agents:** 无
+
+### ✅ 完成
+- **Step 1 移植 + 对账**:`quantkb/goinmax_factors.py` 逐式镜像 Goinmax 7 因子 + z-scorer
+  (Go `factor_library.go`/`factor_z_scorer.go`);Go 对账器 `cmd/factor_parity` 同 fixture 双跑,
+  **7/7 因子 allclose 1e-6 通过**——转写经验证而非信任;13 项单测(含 EMA 播种/RSI 边界/squeeze 语义)
+- **Step 2 Gate 0**(VNPY/Freqtrade/Qlib 实战 checklist 逐类对账):研究层适用 4 类过线;
+  补 2 个缺口——**滑点参数化**(按仓位变化计费,建议 ≥3bp)+ **validate_ohlcv 数据完整性门**
+  (NaN/重复时间戳/high<low/close 越界);顺带消除绩效计算三路径重复(共享尾函数,防再犯 shift(1) 类漂移)
+- **Gate 1 OOS 硬阈值**(ICIR≥0.30/AR≥0.10/IR≥1.20/MDD≥−0.10,4.1y BTC,IS 冻结):
+  **8/8 全 FAIL**。方向按协议 IS 定号(7/8 选反向)后:ICIR 腿 5/8 过线
+  (composite +0.442、price_ema_ratio **+1.204**)但 AR/IR 腿全崩(高频因子 −40~−60%)
+- **Gate 2 免跑**(预登记:任一关挂即负结果);终判文档 `docs/goinmax_factors_gate_verdict.md`
+
+### 📊 测试变化
+- QuantKB: 47 → **52 passed**(+5:滑点/OHLV 完整性×2/windowed IC/ICIR 语义)
+- OpenMythos 310 passed 不变
+
+### 🔑 关键决策 / 发现
+- **因子有真信号但方向为反**(ICIR +1.20!)且 **IC ≠ PnL 第三次实证**:信号过线、映射与成本吞掉收益
+  ——与 M4 完全同构,研究环方法论的复现力得到验证
+- **方向是可调参数**:必须 IS 定号冻结到 OOS——首跑用多头口径全负数,差点误判"因子无信号"
+- 生产 factorBufSize=120 尾窗口径被 gate 复制;生产双向映射(±0.3)本判读**不覆盖**——
+  要采信其自报 OOS Sharpe 0.175 需按生产映射做冻结 OOS 复核(未做)
+
+### 🧭 留到下阶段
+- 可选:按生产双向映射 + 0.3 阈值复测(回答"FactorDirect 真实用法是否有 alpha")
+- Gate 0-1 工具链已沉淀(对账器/gate1 工具/checklist 映射),后续任何因子入实盘前照此流程
+- 上游 PR / CryptoPanic token 等用户决策项不变
+
+---
+
+
+
 ## 2026-10-28 · M4c 4 年样本外验证:30 天信号证伪(方法论按设计工作)
 
 **分支:** QuantKB(a2734fe)+ OpenMythos 本条目 · **Agents:** 无
