@@ -375,6 +375,43 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-30 · D 路线横截面判负 + ICIR 自相关夸大发现,因子族收束
+
+**分支:** QuantKB(c650ff7)+ 本条目 · **Agents:** 无
+
+### ✅ 完成
+- **数据补全**:ETH/SOL 30m 长历史拉取(各 73,005 根,Binance fapi)→ 三标的 1h 对齐面板
+  36,177 bars(2022-09→2026-10),validate_ohlcv 三标的全过
+- **横截面组合回测(TDD)**:`quantkb/cross_section.py` — 排名→仓位(滞后 t−1)/调仓费用
+  /spread 阈值调仓门;4 项测试 + ICIR 语义修正(零方差=稳定信号得高分,不再判 0)
+- **预注册实验**(docs/goinmax_cross_section.md):long_short/long_flat 双映射,IS 选参 →
+  OOS 冻结 → Gate 1 四腿 → Gate 2 三窗 + ±10% 扰动
+- **结果:两因子全判负**。ICIR 腿照旧过线(ema_ratio +0.929、三窗全正)但 PnL 全崩:
+  ema_ratio OOS AR −28.8%(IS 也负,网格里无好配置)、composite AR −82.5%/1282 次调仓
+- **残差诊断(关键)**:排名近静态(36k bar 仅 1033 次翻转)——逐 bar 采样的 ICIR 被
+  自相关系统性夸大,真实样本量≈翻转数;3 标的趋势分化(BTC+273%/SOL+183%/ETH+33%)
+  让静态排名混杂了趋势押注。**方法论发现:M2 gate 与 FactorMiner V3 的 IC/ICIR 需按
+  去自相关单位(翻转事件/非重叠块)复核口径**
+
+### 📊 测试变化
+- QuantKB: 53 → **57 passed**(+4 横截面)
+
+### 🔑 关键决策 / 发现
+- **IC ≠ PnL 第五次,且这次揭穿了 ICIR 本身**:慢速因子的"高 ICIR 稳定性"部分是采样
+  幻影——这是比 PnL 失败更重要的产出,直接影响所有历史 IC/ICIR 结论的解读
+- 该因子族 10 种映射配置(long/flat × 横截面 × band/深持)全部未变现 → **研究环收束**;
+  信号作特征保留,不作独立交易依据
+- 横截面自由度(3 标的)低是边界,但失效机制(趋势混杂 + 静态排名)与标的数无关
+
+### 🧭 留到下阶段
+- 可选后续:IC/ICIR 口径复核(M2 gate + FactorMiner V3,去自相关采样)——影响历史结论
+  解读,独立工作项;生产映射双向复测(B)仍开放
+- 用户决策项:上游 PR / 新闻 token
+
+---
+
+
+
 ## 2026-10-30 · A+C 映射优化实验判负:IS +262% → OOS −24%,long/flat 择时关闭
 
 **分支:** QuantKB(ff86897)+ 本条目 · **Agents:** 无
