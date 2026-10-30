@@ -375,6 +375,39 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-10-30 · A+C 映射优化实验判负:IS +262% → OOS −24%,long/flat 择时关闭
+
+**分支:** QuantKB(ff86897)+ 本条目 · **Agents:** 无
+
+### ✅ 完成
+- **预注册**(`docs/goinmax_mapping_opt.md`):band{0.5/1.0/1.5σ} × exit{翻转/深持} 六格网格,
+  IS 选 Sharpe 最优 → OOS 冻结 → 四腿 gate → Gate 2 三窗 + ±10% 扰动;生产费率(maker 2bp+3bp)
+- **exit_band 死区参数**(TDD):band 模式新增退出深度旋钮;语义纠偏——翻转(−band)本就是
+  最少交易,深持(<−band)才进一步降换手,死区(exit→0)反而更快离场
+- **结果:IS 找到 Sharpe +1.19/+262% 配置,OOS 冻结后 5 笔/−24.4%**——教科书级 IS 过拟合,
+  预注册冻结协议完成拦截。ICIR 腿全线过(OOS +0.87/三窗全正),PnL 三腿全崩
+- **Gate 2: 0/3 窗过 + 扰动判定稳定 FAIL** → 按预登记规则:**long/flat 择时判负,转 D(组合化/横截面)**
+- 过程自纠 2 个管线 bug:σ 冻结没真正冻结(OOS 切片上重算成 0 → 假交易数)、ICIR 漏乘方向
+  修正——修复后结论方向不变但数字全部重算;教训:冻结参数必须显式跨切片传递
+
+### 📊 测试变化
+- QuantKB: 52 → **53 passed**(+1:深持降换手语义)
+
+### 🔑 关键决策 / 发现
+- **IC ≠ PnL 第四次实证,且这次是映射调优版**:band/深持/降换手全部尝试后依然无法把
+  ICIR 1.2 的信号变成 OOS 收益——2026 年 regime(窗 3)杀趋势映射,窗 1/2 曾有 +50~68%
+- 6 格网格的 IS 最优(Sharpe 1.19)是选择偏差的标本;IS 表演再漂亮,冻结 OOS 说了算
+- **单标的 long/flat 择时就此关闭**:信号资产(em_ratio ICIR 1.2 级)迁移横截面/组合化战场
+
+### 🧭 留到下阶段
+- D 路线:Qlib 修过的回测引擎 + BTC/ETH/SOL 横截面配置(需补 ETH/SOL 数据),信号在多标的
+  结构里重新验证;生产映射双向复测(B)可并行回答 FactorDirect 实盘通道问题
+- 用户决策项不变(上游 PR / 新闻 token)
+
+---
+
+
+
 ## 2026-10-30 · Goinmax 因子进研究栈跑 Gate 0-1:移植对账通过,Gate 1 判负
 
 **分支:** QuantKB(88c9a21/8208eb4/1dd2a29)+ Goinmax audit 分支(90fea16)+ 本条目 · **Agents:** 无
