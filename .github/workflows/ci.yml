@@ -16,8 +16,10 @@ concurrency:
 # Single source of truth for the stack that decides these verdicts, matching the
 # canonical local gate env (.venv-arm64). Every job installs from these values and
 # then asserts what actually resolved, so "green" cannot silently describe a stack
-# nobody measures locally. Layers that do not decide a verdict (numpy, transformers,
-# datasets, pytest) stay resolved by pip and are printed, not pinned.
+# nobody measures locally. The advisory benchmark job reads the same block: its
+# timings are only comparable if the stack behind them is named. Layers that do not
+# decide a verdict (numpy, transformers, datasets, pytest) stay resolved by pip and
+# are printed, not pinned.
 env:
   GATE_TORCH: "torch==2.12.0"
   GATE_MYPY: "mypy==2.4.1"
@@ -134,3 +136,37 @@ jobs:
         # Config lives in pyproject.toml; currently passes with 0 errors on
         # main. Enforced (no continue-on-error) so regressions block.
         run: python -m mypy --no-incremental
+
+  benchmark:
+    name: gate benchmark (advisory)
+    runs-on: ubuntu-latest
+    # Advisory on purpose: CPU timings cannot satisfy the Stage 3 exit gate
+    # (that asks for 3B GPU throughput), and runner contention is not a
+    # regression signal. Blocking on it would teach people to ignore the red.
+    # What the job does own is a record: every trunk push and every PR re-runs
+    # the same harness on the same pinned stack, so the next performance PR
+    # has a diffable before/after instead of a claim.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install runtime deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install --index-url https://download.pytorch.org/whl/cpu "${GATE_TORCH}"
+      - name: Assert gate stack
+        # Same rule as the verdict jobs, applied to timings: a number printed
+        # without its torch version cannot be compared across runs anyway.
+        run: python -m examples.ci_gate_stack "${GATE_TORCH}"
+      - name: Run gate benchmark
+        # Shapes kept small so the job stays a footnote next to the gates.
+        run: >-
+          python -m benchmarks.gate_bench
+          --seq-len 256 --repeat 3 --threads 1 --json gate_bench.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate-bench-${{ github.run_id }}
+          path: gate_bench.json
