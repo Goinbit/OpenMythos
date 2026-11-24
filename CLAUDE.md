@@ -257,7 +257,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
-**代码侧本地可推进范围内:0 技术债;验证通道侧有 1 项结构性缺口。** 106 个提交领先 upstream `main`,已全部推送 fork(`Goinbit/OpenMythos`,不再存在"未推送提交"),PR #91 自 2026-11-01 开放等上游裁决 —— 但 **CI 三闸门从未对这批工作执行过**(fork 未启用 Actions)。最大交付风险不在代码质量,在"绿"这个字目前只有本机单一环境的证据。
+**代码侧本地可推进范围内:0 技术债;验证通道侧有 1 项结构性缺口。** 108 个提交领先 upstream `origin/main`(kyegomez),其中除本轮 2 个提交(按"先不推送"仅存本地)外已全部推送 fork(`Goinbit/OpenMythos`);PR #91 自 2026-11-01 开放等上游裁决 —— 但 **CI 三闸门从未对这批工作执行过**(fork 未启用 Actions)。最大交付风险不在代码质量,在"绿"这个字目前只有本机单一环境的证据。
 
 ### 基础设施齐备度
 
@@ -294,7 +294,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | 覆盖率 | 97% / 948 stmts | **97% / 1026 stmts** | 百分比持平,基数 +78 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
 | CI | ✅ 3 jobs | **从未运行**(fork Actions 未启用,PR #91 零 check-run) | ⚠️ 声明纠偏 |
-| 未推送提交 | 64(待合入决策) | **0**(fork 已同步,PR #91 等上游裁决) | −64 |
+| 未推送提交 | 64(待合入决策) | **0**(fork 已同步;本轮 2 个提交按"先不推送"留本地) | −64 |
 | headline 语料 | "633 条"(膨胀口径,已失真) | **4,356 唯一标题**(2024-03-14 → 2026-11-24,正类 5.1%) | 口径修正 |
 | QuantKB 测试 | 132 passed / 1 skipped | **134 passed / 1 skipped** | +2(去重回归) |
 
@@ -318,7 +318,7 @@ All work in this project must reference the phase/item below when opening a PR (
 ## 下一轮候选(按可行性)
 
 ### 🔴 需用户决策
-- **给 CI 一条真实运行通道**(本轮新暴露的唯一验证缺口)——106 个提交从未过 CI。三条可选路径:
+- **给 CI 一条真实运行通道**(本轮新暴露的唯一验证缺口)——108 个提交从未过 CI。三条可选路径:
   1. 在 fork 设置启用 Actions(`Goinbit/OpenMythos` → Actions = allow)后,开 fork 内 PR(`main` ← 当前分支)→ 三闸门即刻真实执行。代价:远程设置改动 + 一个 PR(外发动作)
   2. 本地把三闸门脚本化(`.venv-arm64/bin/python -m pytest / -m mypy / -m ruff`)当作临时替代 → 零外发,但 PR 合入仍无第三方验证
   3. 等上游 PR #91 由维护者触发 CI → 取决于对方是否启用,不可控
@@ -395,7 +395,7 @@ All work in this project must reference the phase/item below when opening a PR (
 **约束:全程零推送、零外发** ✅(用户此前指令"先不推送"持续有效)
 
 ### ✅ 完成
-- **进度核对(文档 vs 实测)**:OpenMythos 测试 **301 passed**(文档快照记 246)· 覆盖率 **97% / 1026 stmts**(948)· `config.py` 360 行(快照 314)· `train_small_lm.py` 746 行(快照 533)· fork 分支已同步,106 commits 领先 upstream `main`,PR #91 仍 open
+- **进度核对(文档 vs 实测)**:OpenMythos 测试 **301 passed**(文档快照记 246)· 覆盖率 **97% / 1026 stmts**(948)· `config.py` 360 行(快照 314)· `train_small_lm.py` 746 行(快照 533)· fork 分支已同步,测量时领先 upstream `main` 106 commits(本轮 2 个提交后为 108,均留本地未推),PR #91 仍 open
 - **⚠️ CI 从未执行这批工作**:`gh api .../commits/<head>/check-runs` 空、`gh run list --repo Goinbit/OpenMythos` 为 `[]`、fork `has_actions=false`、上游 workflow 清单只有 Copilot/Dependabot —— 快照里的 "GitHub Actions CI ✅ 3 jobs" 一直是"已定义"而非"已通过",已纠偏
 - **headline 归档膨胀缺陷(TDD)**:11-08 上线的积累器把滚动风控文件的 24h 窗口语义误用为去重窗口,feeds 反复回供的旧标题每轮重新入库 —— 现场日志"73 条标题 / archived 58 new"暴露,实测 442 个标题重复 >100 次(最坏 1,843 次 ≈ 144 轮/天 × 13 天)。`append_headline_archive` 去重口径改为**全局首见**(pubdate 只作时间戳),`tools/rss_event_stream.py:67` 调用点同步;新增 `test_regression_stale_pubdate_not_reappended` 钉死;归档一次性重建 252,246 → **4,356 行**(零重复、时序完整,备份 `.bak-20261124`);10:02 launchd 实跑验证输出 "archived 0 new"
 - **语料真实规模(改写 laya 标注规划前提)**:4,356 唯一标题 / 正类 5.1% ≈ 222 条,新增 ~240 条/天 → 攒 500 正类样本需 ~40 天,而非 11-08 条目按"633 条"口径推的时点
