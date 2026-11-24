@@ -44,16 +44,22 @@ jobs:
         # `datasets`-importing test modules, on the 3.12 leg only. Letting pip
         # resolve keeps each leg coherent, and matches the canonical local gate
         # env (.venv-arm64: numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5).
+        # torch IS pinned: leaving it loose resolved 2.14.1 (py3.10) and 2.15.0
+        # (py3.12) against the canonical gate env's 2.12.0, so the "green" here
+        # described a stack nobody measures locally. 2.12.0+cpu ships
+        # manylinux x86_64 wheels for both legs, so the pin costs no availability.
         run: |
           python -m pip install --upgrade pip
-          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.12.0'
           pip install pytest pytest-timeout "transformers>=4.40.0" "datasets>=2.18.0" "loguru>=0.7.3"
 
       - name: Show environment
         run: |
           python --version
           python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
-          pip list | grep -iE 'torch|numpy|datasets|transformers|loguru|pytest'
+          # pyarrow is listed because the numpy/pyarrow wheel fork is what made
+          # a leg fail once; the resolved pair is the reproducible coordinate.
+          pip list | grep -iE 'torch|numpy|pyarrow|datasets|transformers|loguru|pytest|mypy|ruff'
 
       - name: Run pytest
         # tests/test_tokenizer.py is excluded because it downloads a HF model
@@ -95,12 +101,14 @@ jobs:
         # Matches [tool.mypy] config in pyproject.toml.
         run: |
           python -m pip install --upgrade pip
-          pip install --index-url https://download.pytorch.org/whl/cpu torch
-          # Exact pin: whether an ignore is "used" depends on mypy+torch stub
-          # versions; verified green at mypy 2.4.1 + torch 2.12.0. No numpy pin
-          # — the canonical local gate env (where that green was measured) runs
-          # numpy 2.4.6, and pinning numpy<2 there would describe a stack nobody
-          # verifies.
+          # Exact pins on BOTH layers that decide this verdict: the mypy version
+          # and the torch stub generation. Unpinned torch resolved 2.14.1/2.15.0
+          # while the local green was measured on 2.12.0 — under a range, the
+          # upstream release cadence decides whether the gate holds.
+          pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.12.0'
+          # No numpy pin — the canonical local gate env (where that green was
+          # measured) runs numpy 2.4.6, and pinning numpy<2 there would describe
+          # a stack nobody verifies.
           pip install 'mypy==2.4.1'
       - name: mypy
         # Config lives in pyproject.toml; currently passes with 0 errors on
