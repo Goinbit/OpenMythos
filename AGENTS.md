@@ -248,7 +248,7 @@ All work in this project must reference the phase/item below when opening a PR (
 |---|---|---|
 | Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部 |
 | Stage 1 契约硬化 | ✅ 完成 | P1.1-P1.5 全部 |
-| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 · 现测 **301 passed** |
+| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 · 现测 **320 passed** |
 | Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
@@ -257,16 +257,16 @@ All work in this project must reference the phase/item below when opening a PR (
 | 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
-**代码侧本地可推进范围内:0 技术债;验证通道缺口已补上、常态化、且本轮把闸门口径漂移闭掉。** CI 通道形态:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 即自动跑三闸门;改动批次一律"从 fork `main` 起短分支 → fork 内 PR(自动带 checks)→ `--merge` 合入",本轮实战四次:PR [#2](https://github.com/Goinbit/OpenMythos/pull/2)(代码:pin torch)→ `0ac4948`;PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / 本条合入。闸门版本栈本轮钉到位:`torch==2.12.0`(test 双腿 + typecheck 共三处)+ `mypy==2.4.1` + `ruff==0.15.8` = canonical `.venv-arm64` 口径;首个 pin 后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿同为 **`torch 2.12.0+cpu`** / 各 **301 passed**(12.31s / 18.32s)/ mypy **0 errors 35 files** / ruff 全过;再下一次 `d3ce0f2` 的 run [`45335182662`](https://github.com/Goinbit/OpenMythos/actions/runs/45335182662) 与 `9112570` 的 run [`45336603284`](https://github.com/Goinbit/OpenMythos/actions/runs/45336603284) 同样 4/4(12.75s / 18.35s)—— **主干每次合入都自动跑一遍闸:已核 4 条 run 全绿,计数随合入前进**(清单与口径见日志条目)。**仍按腿自由解析的层**:numpy(2.2.6 / 2.5.5)、transformers(5.20.2 / 5.24.0)、datasets(5.2.0)、pytest(9.2.0)—— 这些不是判定口径(除 numpy 外),刻意不钉以免每次上游发版都要改文件,引用时按此说明。分支拓扑:上游 PR #91 的 head = `codex/sync-main-with-origin-20260524` @ **`66c40bb`**(`state=open / mergeable=MERGEABLE`,自 2026-11-01 等裁决),fork `main` 领先 upstream `origin/main`(kyegomez)**119 commits**、领先该 head **9 commits**(实测于 `9112570`,口径 `gh api repos/Goinbit/OpenMythos/compare/<upstream>...<fork main>`;每次 PR 合入 +2,**别把主干计数或 SHA 当常量写进结论**) —— 日常提交从此走 fork `main` 短分支,不再触碰 PR #91 的 head,既守住"先不推送"对该分支的约束,也解除"docs 提交推送 = 对上游可见"的两难。**PR #1 之前的 100+ 历史提交仍未有过任何 check-run**(Actions 无法对过去补跑)。最大交付风险已从"绿只有本机证据"降为"绿有第三方环境 + 主干持续 + 版本栈对齐三重背书,但历史批次仍未过闸"。
+**代码侧本地可推进范围内:0 技术债;验证通道缺口已补上、常态化、闸门口径漂移已闭掉,并且口径本身现在由闸门自证。** CI 通道形态:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 即自动跑三闸门;改动批次一律"从 fork `main` 起短分支 → fork 内 PR(自动带 checks)→ `--merge` 合入",本轮实战五次:PR [#2](https://github.com/Goinbit/OpenMythos/pull/2)(代码:pin torch)→ `0ac4948`;PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f`;PR [#6](https://github.com/Goinbit/OpenMythos/pull/6)(代码:闸门自证)→ **`8d994f2`**;本条目为 docs 批。闸门版本栈钉到位且收进单一来源:workflow 级 `env:` 定义 `torch==2.12.0`(test 双腿 + typecheck)+ `mypy==2.4.1` + `ruff==0.15.8` = canonical `.venv-arm64` 口径,**install 引用该变量,每个 job 在判定步之前跑 `examples.ci_gate_stack` 断言实际解析结果**(runner 日志实测 `[gate-stack] OK torch 2.12.0+cpu matches pin 2.12.0`,四个 job 各有);首个 pin 后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿同为 **`torch 2.12.0+cpu`** / 各 **301 passed**(12.31s / 18.32s)/ mypy **0 errors 35 files** / ruff 全过;`d3ce0f2` 的 run [`45335182662`](https://github.com/Goinbit/OpenMythos/actions/runs/45335182662) 与 `9112570` 的 run [`45336603284`](https://github.com/Goinbit/OpenMythos/actions/runs/45336603284) 同样 4/4(12.75s / 18.35s);合入 PR #6 后的 `8d994f2` run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 双腿 **320 passed** —— **主干每次合入都自动跑一遍闸:已核 6 条 run 全绿,计数随合入前进**(清单与口径见日志条目)。**仍按腿自由解析的层**:numpy(2.2.6 / 2.5.5)、transformers(5.20.2 / 5.24.0)、datasets(5.2.0)、pytest(9.2.0)—— 这些不是判定口径(除 numpy 外),刻意不钉以免每次上游发版都要改文件,引用时按此说明。分支拓扑:上游 PR #91 的 head = `codex/sync-main-with-origin-20260524` @ **`66c40bb`**(`state=open / mergeable=MERGEABLE`,自 2026-11-01 等裁决),fork `main` 领先 upstream `origin/main`(kyegomez)**123 commits**、领先该 head **13 commits**(实测于 `8d994f2`,口径 `gh api repos/Goinbit/OpenMythos/compare/<upstream>...<fork main>`;每次 PR 合入 +2,**别把主干计数或 SHA 当常量写进结论**) —— 日常提交从此走 fork `main` 短分支,不再触碰 PR #91 的 head,既守住"先不推送"对该分支的约束,也解除"docs 提交推送 = 对上游可见"的两难。**PR #1 之前的 100+ 历史提交仍未有过任何 check-run**(Actions 无法对过去补跑)。最大交付风险已从"绿只有本机证据"降为"绿有第三方环境 + 主干持续 + 版本栈对齐三重背书,但历史批次仍未过闸"。
 
 ### 基础设施齐备度
 
 | 项 | 状态 |
 |---|---|
-| **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那两层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck)+ `mypy==2.4.1` + `ruff==0.15.8`;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
-| pytest 守护 | ✅ **301 passed / 0 skipped**(2026-11-24 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试;历史条目中的"310"= 301 + 9)|
+| **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
+| pytest 守护 | ✅ **320 passed / 0 skipped**(2026-11-24 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试;历史条目中的"301"= 加 `ci_gate_stack` 19 项之前,"310"= 301 + 9)|
 | 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1026** stmts,2026-11-24 重测)—— 超阶段 2 ≥70% 门槛,百分比自 10-24 持平,语句数 +78 |
-| GitHub Actions CI | ✅ **首批真实运行 2026-11-24 → 常态化到 base 分支 → 口径钉齐(三步同日完成)** — ① fork 内自开 PR [#1](https://github.com/Goinbit/OpenMythos/pull/1) 4/4 check-run 全绿并合入 fork `main`(`b42aa38`),workflow 进 base 后 push 事件也触发;② **本轮把 torch 层钉住**:`1ae53e6` 在 test 双腿 + typecheck 三处 `torch==2.12.0`(与 canonical `.venv-arm64` 同代 stub),经 PR [#2](https://github.com/Goinbit/OpenMythos/pull/2) run [`45333822067`](https://github.com/Goinbit/OpenMythos/actions/runs/45333822067) 4/4 → 合入 `0ac4948`;③ 合入后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿 `torch 2.12.0+cpu` / 各 **301 passed** / mypy **0 errors 35 files** / ruff 全过 —— 与本机对标口径**同栈同计数**。Repo Actions 本就是 `enabled: true`(早前"has_actions=false" 是查询了不存在字段的结果,已纠偏)。**仍按腿漂移的层**:numpy 2.2.6/2.5.5、transformers 5.20.2/5.24.0、datasets 5.2.0、pytest 9.2.0(本机 9.0.3)—— 未钉,判定不依赖它们(numpy 例外:它是 pyarrow wheel 分叉的那一层,已在注释里写明为何不钉回)。**主干 push run 自 workflow 进 base 后逐次全绿**(已核 4 条:`45332751411` / `45334069724` / `45335182662` / `45336603284`;每合入一次即新增一条,计数不钉死 —— 核对 `gh run list --branch main --event push`)—— 三闸门自此是"每次合入自动跑"的常态闸,不再是一次性验证。**PR #1 之前的 100+ 历史提交仍无任何 check-run** |
+| GitHub Actions CI | ✅ **首批真实运行 2026-11-24 → 常态化到 base 分支 → 口径钉齐 → 口径自证(四步同日完成)** — ① fork 内自开 PR [#1](https://github.com/Goinbit/OpenMythos/pull/1) 4/4 check-run 全绿并合入 fork `main`(`b42aa38`),workflow 进 base 后 push 事件也触发;② **把 torch 层钉住**:`1ae53e6` 在 test 双腿 + typecheck 三处 `torch==2.12.0`(与 canonical `.venv-arm64` 同代 stub),经 PR [#2](https://github.com/Goinbit/OpenMythos/pull/2) run [`45333822067`](https://github.com/Goinbit/OpenMythos/actions/runs/45333822067) 4/4 → 合入 `0ac4948`;③ 合入后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿 `torch 2.12.0+cpu` / 各 **301 passed** / mypy **0 errors 35 files** / ruff 全过 —— 与本机对标口径**同栈同计数**;④ **口径自证**:`d686655` 把三层 pin 收进 workflow `env:` 单一源,三个 job 各加 `Assert gate stack` 且排在判定步之前(新增 `examples/ci_gate_stack.py` + 19 项测试,其中 5 项把 ci.yml 结构本身当契约测),经 PR [#6](https://github.com/Goinbit/OpenMythos/pull/6) run [`45358290221`](https://github.com/Goinbit/OpenMythos/actions/runs/45358290221) 4/4 → 合入 **`8d994f2`**;主干 push run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 4/4 且四个 job 日志逐条 `[gate-stack] OK torch 2.12.0+cpu` / `mypy 2.4.1` / `ruff 0.15.8`,双腿 **320 passed** —— **自此 green 自带版本坐标,runner 解析出别的栈会在产出判定前先红**。Repo Actions 本就是 `enabled: true`(早前"has_actions=false" 是查询了不存在字段的结果,已纠偏)。**仍按腿漂移的层**:numpy 2.2.6/2.5.5、transformers 5.20.2/5.24.0、datasets 5.2.0、pytest 9.2.0(本机 9.0.3)—— 未钉,判定不依赖它们(numpy 例外:它是 pyarrow wheel 分叉的那一层,已在注释里写明为何不钉回)。**主干 push run 自 workflow 进 base 后逐次全绿**(已核 6 条:`45332751411` / `45334069724` / `45335182662` / `45336603284` / `45337780378` / `45358591379`;每合入一次即新增一条,计数不钉死 —— 核对 `gh run list --branch main --event push`)—— 三闸门自此是"每次合入自动跑"的常态闸,不再是一次性验证。**PR #1 之前的 100+ 历史提交仍无任何 check-run** |
 | mypy 类型检查 | ✅ **0 errors / 35 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
 | ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
 | pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
@@ -276,9 +276,9 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ---
 
-## 最近一轮重点(2026-11-08 → 2026-11-24 · QuantKB 两周工作落盘 + 闸门可复现性 + CI 真实执行通道建成、常态化、口径钉齐)
+## 最近一轮重点(2026-11-08 → 2026-11-24 · QuantKB 两周工作落盘 + 闸门可复现性 + CI 真实执行通道建成、常态化、口径钉齐、口径自证)
 
-### 交付总览 · OpenMythos 10 commits(fork `main` 已含 9 个 + 本条目)+ QuantKB 11 commits
+### 交付总览 · OpenMythos 11 commits(fork `main` 已含 10 个 + 本条目)+ QuantKB 11 commits
 
 | 批次 | Commits | 内容 |
 |---|---|---|
@@ -287,15 +287,16 @@ All work in this project must reference the phase/item below when opening a PR (
 | ③ 闸门可复现性 | OpenMythos `7eba113` | buffer 类级注解替代 ignore(mypy 2.4.1 + torch 2.12 下 6 错 → 0)· `run_3b.py` 两处 ignore 恢复(两代 stub 均必要)· CI 精确 pin `ruff==0.15.8` / `mypy==2.4.1` |
 | ④ CI 真实执行通道 | OpenMythos `66c40bb` + fork PR [#1](https://github.com/Goinbit/OpenMythos/pull/1)(**已合入 fork `main` → `b42aa38`**) | 用户选定的路径 A:推送分支 + fork 内自开 PR(base `main` 无 workflow 文件是真实缺口,Repo Actions 早就 enabled)· 首批 4/4 全绿 · **第一次真跑就抓出本地不可见的缺陷**:`numpy<2` 与按 Python 版本分叉的 pyarrow wheel 冲突使 py3.12 腿 collection 挂(3 个 `datasets` 测试模块),py3.10 腿侥幸通过 → 去掉该 pin 后双腿各自解析出与对标环境一致的可复现口径 · 随后经用户授权合入 fork `main`,workflow 进 base 分支 → **push 到 `main` 自动触发三闸门,首个 main run 4/4 success** |
 | ⑤ 闸门口径钉齐 + 批次工作流定型 | OpenMythos `1ae53e6`(经 PR [#2](https://github.com/Goinbit/OpenMythos/pull/2) → fork `main` `0ac4948`) | 合入后再读 CI 日志,发现"4/4 全绿"跑的是未 pin 的 torch(`2.14.1+cpu` / `2.15.0+cpu`)≠ canonical 2.12.0 → **三处 `torch==2.12.0` 精确 pin**(test 双腿 + typecheck);改前先确认 2.12.0+cpu 对 cp310/cp312 manylinux x86_64 wheel 均存在(索引 38 命中),pin 不牺牲可用性 · `pip list` 打印扩到 pyarrow(上一轮真正炸的那层)· **批次工作流定型:从 fork `main` 起短分支 → fork 内 PR(自动带三闸门)→ `--merge` 合入**,本轮全部改动按此形态执行 |
+| ⑥ 闸门自证口径 | OpenMythos `d686655`(经 PR [#6](https://github.com/Goinbit/OpenMythos/pull/6) → fork `main` `8d994f2`) | pin 从六处字面量收进 workflow 级 `env:` 单一源,install 引用变量;三个 job 各加 `Assert gate stack` 并**排在判定步之前**(`examples/ci_gate_stack.py`,含 `+` 的 pin 要求逐字构建段、否则只比基础段并打印实际构建段);`tests/test_ci_gate_stack.py` 19 项里 5 项把 ci.yml 结构当契约测(字面量位置 / install 引用 / 断言步数 / 断言层与安装层对应)· 通道内证据:PR run `45358290221` 与 main run `45358591379` 均 4/4,四个 job 日志逐条 `[gate-stack] OK`,双腿 **320 passed** @ `torch 2.12.0+cpu` |
 
 ### 里程碑数字对比
 
 | 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| OpenMythos 测试 | 246 | **301** | +55 |
+| OpenMythos 测试 | 246 | **320** | +74 |
 | 覆盖率 | 97% / 948 stmts | **97% / 1026 stmts** | 百分比持平,基数 +78 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
-| CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4(docs)→ `d3ce0f2` / `9112570`;**每次合入自动多一条 4/4 main run(已核 4 条,双腿同 `torch 2.12.0+cpu`,各 301 passed + mypy 0/35 + ruff 全过)** | 验证通道建立、持续、可复现 |
+| CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条 4/4 main run(已核 6 条,双腿同 `torch 2.12.0+cpu`,各 320 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`)** | 验证通道建立、持续、可复现且自证 |
 | 未推送提交 | 64(内容未入库) | **内容缺口 0**:fork `main`(实测当前 head 用 `gh api repos/Goinbit/OpenMythos/git/ref/heads/main --jq '.object.sha'`)已含全部代码与日志(长分支上 `5b321ee`/`eb106ae` 两个 docs 提交的内容以 cherry-pick `77b18b8`/`7aa035a` 进主干;那两个 SHA 仍留本地未推,以冻住上游 PR #91 的 head) | −64 |
 | headline 语料 | "633 条"(膨胀口径,已失真) | **4,356 唯一标题**(2024-03-14 → 2026-11-24,正类 5.1%) | 口径修正 |
 | QuantKB 测试 | 132 passed / 1 skipped | **134 passed / 1 skipped** | +2(去重回归) |
@@ -317,16 +318,18 @@ All work in this project must reference the phase/item below when opening a PR (
 13. **真实执行通道的价值 = 抓本地不可见的分叉** — 本机三闸门全绿不等于 CI 矩阵全绿:首轮真跑就抓出 `numpy<2` 与 pyarrow wheel 的按 Python 版本分叉冲突(py3.10 侥幸通过 / py3.12 collection 挂)。同理,"Repo Actions 已启用"要用 `actions/permissions` 查,不能靠仓库对象上的布尔字段(不存在 → 读成 false 造成误判)。对标口径既写工具版本也写 Python 版本腿
 14. **"结论计数一致"不等于"版本栈一致"** — CI 与本机同为 301 passed / mypy 0 errors 35 files,但 CI 的 torch 未 pin,双腿实际解析出 `2.14.1+cpu`(py3.10)/ `2.15.0+cpu`(py3.12),本机 canonical 是 2.12.0;transformers(5.20.2 / 5.24.0)、numpy(2.2.6 / 2.5.5)同样按腿漂移。两面读法:好处 = mypy 零错在额外两代 stub 上也被证实(比原声明更强);风险 = 未 pin 的那一层由上游发版决定下次是否成立。要引用某个具体栈就 pin 到那一层,否则文档必须写清哪层钉住、哪层漂移。**本轮已收口**:参与闸门判定的三层(×2 test 腿 + typecheck 的 torch,加 mypy、ruff)全部精确钉住;非判定层(numpy/transformers/datasets/pytest)保持自由解析,并在快照逐名列出实测版本 —— "钉哪层"的准绳是"这一层是否参与判定",而非"是否全钉死"
 15. **绿色本身是新信息的来源,不是终点** — 同一条 main push run,上一轮读的是"是否 4/4",本轮读的是"4/4 是在哪个栈上取得的",于是发现 torch 漂移并当场修掉(见第 14 条收口)。**只记结论数字的绿灯会被反复引用而无人再看细节**;把日志字段(`pip list` / `torch.__version__`)打进 CI 输出,才让"再读一遍"成为可执行的验证动作
+16. **钉住之后要防的是"再漂回去" —— 版本坐标应由产出结论的进程自己复述并校验** 上一轮靠精确 pin + 注释把口径收口,但注释不会被执行,同一版本字面量在六个地方各写一遍意味着将来改版本必然漏改。本轮正解分两层:①结构层把 pin 收进单一 `env:` 源、install 引用变量;②判定层在**判定步之前**断言实际解析结果(`examples.ci_gate_stack`),再加 5 项把 ci.yml 文本本身当契约测的测试(字面量只允许出现在 `env:`、断言步数、断言层↔安装层对应)。通用形态:凡是"结论必须绑定环境坐标"的地方,坐标不该写在旁边等人去对照,而该由产出该结论的那个进程打印出来并在不符时直接失败
+17. **`pull_request` 的 checks 使用 PR head 分支的 workflow 内容 —— 新闸门可以在合入前就取到外部证据** 本轮实证:PR #6 run `45358290221` 的四个 job 已经执行了新加的 `Assert gate stack` 步(`jobs --jq '.steps[].name'` 可核),因此改动自身的验证不必先合再验;顺序上"先 PR 证据、再合入、再主干证据"两条 run 各取一次,成本只多两分钟
 
 ---
 
 ## 下一轮候选(按可行性)
 
 ### 🔴 需用户决策
-- **CI 通道已建成、常态化、口径钉齐(本轮 A + 合入 `main` + torch pin 全部完成)** — 剩余两项延伸:
+- **CI 通道已建成、常态化、口径钉齐、口径自证(A + 合入 `main` + torch pin + PR #6 闸门自证全部完成)** — 剩余两项延伸:
   1. **历史 100+ 提交是否补证据** — Actions 无法对过去补跑;可在分支上手动 `workflow_dispatch` 取当前 HEAD 的独立证据,或接受"历史批次无闸"这一边界
-  2. **非判定层要不要也钉**(numpy / transformers / datasets / pytest)—— 现按腿漂移(numpy 2.2.6/2.5.5、transformers 5.20.2/5.24.0、datasets 5.2.0、pytest 9.2.0);钉了更严格,代价是每次上游发版需人工改文件
-- **后续改动批次的分支形态已定(本轮实际采用)** — 从 fork `main` 起短分支 → fork 内 PR → `--merge` 合入;上游 PR #91 的 head 冻结在 `66c40bb`,日常提交不再移动它。附带影响:PR #91 与主干会进一步分叉(现差 5 commits),若将来要让上游看到最新工作,需另开 PR 或更新该 head(用户决策)
+  2. **非判定层要不要也钉**(numpy / transformers / datasets / pytest)—— 现按腿漂移(numpy 2.2.6/2.5.5、transformers 5.20.2/5.24.0、datasets 5.2.0、pytest 9.2.0);钉了更严格,代价是每次上游发版需人工改文件。**若要钉,顺带把 `env:` 加一项 + 断言步加一个参数即可,边际成本已比上一轮低很多**(自证机制就是为这个准备的)
+- **后续改动批次的分支形态已定(连续两轮实战)** — 从 fork `main` 起短分支 → fork 内 PR → `--merge` 合入;上游 PR #91 的 head 冻结在 `66c40bb`(实测 `gh api repos/Goinbit/OpenMythos/git/ref/heads/codex/sync-main-with-origin-20260524`),日常提交不再移动它。附带影响:主干领先该 head(**实测于 `8d994f2`:ahead 13 / behind 0**,口径 `gh api repos/Goinbit/OpenMythos/compare/66c40bb...Goinbit:main --jq '"ahead=\(.ahead_by) behind=\(.behind_by)"'`;每合一次 +2)—— behind 0 说明该 head 已被主干完全包含,若将来要让上游看到最新工作,是"把该分支 ff 到主干再推"而不是解冲突(用户决策)
 - **PR #91 合入裁决** — 自 2026-11-01 开放,`state=open / mergeable=MERGEABLE`,最后活动 2026-11-06,上游无回应
 - **Goinmax-clean 镜像推送**(253 refs,密钥已剥离)· **`audit/risk-overlay-zh` 并回**(等回滚实验收束)—— 均延续前轮
 
@@ -392,6 +395,40 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-24 · 闸门自证:pin 收进单一 `env:` 源,每个 job 在判定前先断言自己跑在哪个栈上
+
+**分支:** OpenMythos `ci/gate-self-assert`(自 fork `main` `d3e923f` 起)· **commits:** `d686655` → PR [#6](https://github.com/Goinbit/OpenMythos/pull/6) run [`45358290221`](https://github.com/Goinbit/OpenMythos/actions/runs/45358290221) 4/4 → `--merge` → fork `main` **`8d994f2`**;主干 push run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 同样 4/4;docs 批次 = 本条目(下一 PR 合入)
+**Agents:** 无 · **完成 IDs:** 无新 plan ID —— 计划外:把上一轮的"口径钉齐"从文档约定升级为机器断言
+**约束执行:** 全程只动 fork(短分支 + fork 内 PR),**上游 PR #91 的 head `66c40bb` 零改动** ✅;`先不推送` 对其余分支持续有效
+
+### ✅ 完成
+- **动机**:上一轮把三层判定口径钉住了,但钉法本身仍是脆弱的 —— 同一个版本字面量在六个地方各写一遍(install 行 ×3 + 注释若干),而"这条 run 到底在哪个栈上绿的"依然只能靠人事后去读 `pip list`。**pin 会漂移回文档之外,绿色不携带自己的版本坐标。** 修法是把两件事都变成结构:
+  - `.github/workflows/ci.yml`:新增 workflow 级 `env:` 块作唯一定义处(`GATE_TORCH: "torch==2.12.0"` / `GATE_MYPY: "mypy==2.4.1"` / `GATE_RUFF: "ruff==0.15.8"`),三处 install 改为引用 `"${GATE_*}"`,全仓不再有任何版本字面量出现在 `env:` 之外
+  - **`examples/ci_gate_stack.py`(新,仅标准库)**:`parse_requirement` / `check_stack(requirements) -> (problems, report)` / `main(argv) -> int`;pin 含 `+` 时要求逐字匹配构建段,否则只比基础段并把实际构建段(`+cpu`)作为日志证据打印;任一不符 `exit 1`,包未安装报"not installed"而非抛异常
+  - **三个 job 各加 `Assert gate stack` 步,且排在判定步之前**:test 双腿断言 torch、lint 断言 ruff、typecheck 断言 torch + mypy(mypy 的结论由 stub 代际决定,两层都断言)
+- **TDD**:`tests/test_ci_gate_stack.py` 19 项 —— 解析(含 local version)/三类匹配语义/缺失包/退出码/畸形 spec 走 `parser.error`,外加 **`TestWorkflowSingleSource` 5 项把 ci.yml 本身当契约测**:版本字面量只允许出现在 `env:` 块、install 行必须引用变量、`examples.ci_gate_stack` 恰好出现 3 次、每个 job 断言的正是它安装的层(`GATE_TORCH` 断言 2 次 / MYPY、RUFF 各 1 次)。**改 workflow 时漏掉一处 pin 会让测试红,而不是等下次上游发版才发现。**
+- **本机三闸门**(`.venv-arm64`):ruff `All checks passed!` · mypy `Success: no issues found in 35 source files` · pytest **320 passed**(301 + 19);CLI 实跑对 canonical 栈 `rc=0`,对 `torch==9.9.9` 与 `torch`(无版本)分别 `rc=1` / `rc=2`
+- **通道内证据(PR #6 run `45358290221`,4/4 success)**:四个 job 的 step 清单均含 `Assert gate stack` 且位于判定步之前;日志逐字 `[gate-stack] OK ruff 0.15.8 matches pin 0.15.8` / `[gate-stack] OK torch 2.12.0+cpu matches pin 2.12.0`(py3.10、py3.12、typecheck 三条各有)/ `[gate-stack] OK mypy 2.4.1 matches pin 2.4.1`;判定 = 双腿 **320 passed**(17.09s / 18.11s)+ mypy **0 errors / 35 files** + ruff **All checks passed**
+- **合入后的主干 push run `45358591379`(head `8d994f2`)4/4 success**,同一批断言在主干事件上再次逐条 OK,双腿 **320 passed** @ `torch 2.12.0+cpu`(11.43s / 18.53s)/ mypy 0/35 / ruff 全过 —— **自此"4/4"自带版本坐标,不需要再靠人去读日志核对栈**
+- **主干 push run 按口径重测 = 6 条全绿**(`gh run list --branch main --event push`):`b42aa38` `45332751411` → `0ac4948` `45334069724` → `d3ce0f2` `45335182662` → `9112570` `45336603284` → `d3e923f` `45337780378` → **`8d994f2` `45358591379`**;`compare` 实测领先 upstream `origin/main` **123 commits**、领先 PR #91 head **13 commits** —— 与上一轮记录的 +2/次 规则吻合(121/11 → 123/13),规则本身继续有效,数字只在需要时测
+
+### 📊 测试变化
+- before:301 passed / 0 skipped → after:**320 passed / 0 skipped**(+19:ci_gate_stack 14 + ci.yml 契约 5)
+- 覆盖率 97% / 1026 stmts(`open_mythos/`,本轮未改该包)、mypy 0/35、ruff 全绿保持
+- **注意口径**:快照里历史条目的"301 passed"是**当时**的计数(CI 与本机同值),此后每条引用它都应在需要时重测;当前 canonical 计数 = **320**
+- 新增**外部执行证据类型**:闸门不再只产出"绿",而是产出"绿 + 它跑在 `torch 2.12.0+cpu` / `mypy 2.4.1` / `ruff 0.15.8` 上"的自证日志(PR #6 ×1 + main push ×1,各 4 job)
+
+### 🔑 关键决策 / 发现
+- **把约定翻译成断言,是防漂移的最后一环**:上一轮的"钉哪层/为何钉"写进了注释和文档,但注释不会被执行。本轮真正新增的约束只有两条是机器级的 —— 测试测 ci.yml 结构,pipeline 测解析出的版本。文档条目负责解释为什么,断言负责保证它继续成立
+- **断言必须排在判定之前才有意义**:同一个 job 里"先跑 mypy 再断言 torch 版本"等于白跑 —— 版本错时结论已经产生。四个 job 的 step 顺序本轮都做了核对(用 `jobs --jq '.steps[].name'` 读结构,而非只看绿勾)
+- **pin 的"定义处唯一"比"钉得准"更容易失守**:六个字面量重复意味着将来改版本会漏改。测试用 `re` 扫"非 `GATE_` 行不得出现 `torch|mypy|ruff==<数字>`"把重复变成失败
+- **含 `+` 的 pin 要求逐字构建段,不含的只比基础段**:`torch==2.12.0` 在 runner 上解析为 `2.12.0+cpu`(合法),而 `torch==2.12.0+cpu` 会拒绝 `+cu126`。这是有意的不对称 —— 我们用 cpu 索引装,构建段由索引决定,把它写成日志证据而不是隐形约束
+- **PR 的 checks 使用 head 分支的 workflow 内容**(本轮实证):新加的 `Assert gate stack` 在 PR #6 自己的 run 里就执行了,因此外部证据可以在合入**之前**取到,不必先合再验
+
+### 🧭 留到下阶段
+- **用户决策(不变)**:历史 100+ 提交是否补证据 / 非判定层(numpy / transformers / datasets / pytest)要不要也钉 —— 本轮只把**已钉层**的自证补上,未改变哪些层自由解析 / PR #91 上游裁决 / Goinmax-clean 镜像推送 / `audit/risk-overlay-zh` 并回
+- Stage 5 全体待 GPU;本机低价值项(ruff 0.17 迁移 144 处、`tests/test_main.py` 拆分)不变
 
 ## 2026-11-24 · 闸门口径钉齐:CI 的 4/4 原本跑在未 pin 的 torch 上;短分支→fork PR 成为默认工作流
 
