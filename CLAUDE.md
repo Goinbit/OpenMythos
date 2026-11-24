@@ -431,7 +431,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ### 📈 首次性能读数(每条都带坐标,否则不构成证据)
 
-CI 侧共 **6 条 payload**(PR ×3 + trunk ×2 + 早期无字段 ×1),全部逐字从下载的 `gate_bench.json` 读取,均为 seq256 / threads1 / repeat3 / `torch 2.12.0+cpu`:
+CI 侧共 **6 条 payload**(PR #8 ×2 + PR #10 ×2 + trunk ×2;其中最早一条(`4e72899` 的 run)尚无 `cpu` 字段),全部逐字从下载的 `gate_bench.json` 读取,均为 seq256 / threads1 / repeat3 / `torch 2.12.0+cpu`:
 
 | case | 本机 `arm64/DEFAULT`(Apple M5) | CI `x86_64/AVX512`(3 条) | CI `x86_64/AVX2`(2 条) | CI 无 `cpu` 字段(1 条,`4e72899`) |
 |---|---|---|---|---|
