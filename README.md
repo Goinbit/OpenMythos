@@ -51,7 +51,7 @@ pip install open-mythos[flash]
 ```python
 
 import torch
-from open_mythos.main import OpenMythos, MythosConfig
+from open_mythos import OpenMythos, MythosConfig
 
 
 attn_type = "mla"  # or "gqa"
@@ -97,7 +97,8 @@ out = model.generate(ids, max_new_tokens=8, n_loops=8)
 print(f"[{attn_type.upper()}] Generated shape: {out.shape}")
 
 A = model.recurrent.injection.get_A()
-rho = torch.linalg.eigvals(A).abs().max().item()
+# get_A() returns the diagonal of A, so ρ(A) = max(A) — no eigendecomposition needed.
+rho = A.max().item()
 print(
     f"[{attn_type.upper()}] Spectral radius ρ(A) = {rho:.4f} (must be < 1)"
 )
@@ -121,7 +122,7 @@ from open_mythos import (
     OpenMythos,
 )
 
-cfg = mythos_7b()  # returns a MythosConfig
+cfg = mythos_3b()  # returns a MythosConfig
 model = OpenMythos(cfg)
 
 total = sum(p.numel() for p in model.parameters())
@@ -142,16 +143,16 @@ print(f"Parameters: {total:,}")
 
 ## Training
 
-The training script for the 3B model on FineWeb-Edu is at [`training/3b_fine_web_edu.py`](training/3b_fine_web_edu.py).
+The 3B pretraining entry point is [`training/run_3b.py`](training/run_3b.py). [`training/3b_fine_web_edu.py`](training/3b_fine_web_edu.py) is a deprecated re-export shim kept for backwards compatibility.
 
 **Single GPU:**
 ```bash
-python training/3b_fine_web_edu.py
+python -m training.run_3b
 ```
 
 **Multi-GPU (auto-detects GPU count):**
 ```bash
-torchrun --nproc_per_node=$(python -c "import torch; print(torch.cuda.device_count())") training/3b_fine_web_edu.py
+torchrun --nproc_per_node=$(python -c "import torch; print(torch.cuda.device_count())") -m training.run_3b
 ```
 
 Key design choices:
@@ -161,8 +162,8 @@ Key design choices:
 | Optimizer | AdamW |
 | Dataset | `HuggingFaceFW/fineweb-edu` (`sample-10BT` by default, swap to `sample-100BT` or `default` for full run) |
 | Tokenizer | `openai/gpt-oss-20b` via `MythosTokenizer` |
-| Parallelism | PyTorch DDP via `torchrun`, sharded streaming dataset |
-| Precision | bfloat16 on H100/A100, float16 + GradScaler on older GPUs |
+| Parallelism | PyTorch FSDP (full shard) via `torchrun`, sharded streaming dataset |
+| Precision | bfloat16 when the GPU supports it, else float16 — FSDP `MixedPrecision` under `torchrun`, `torch.amp.autocast` on a single GPU. No dynamic loss scaler on the fp16 path (`examples/train_small_lm.py` is the only script that uses `GradScaler`) |
 | Schedule | Linear warmup (2000 steps) → cosine decay |
 | Target | 30B tokens (~Chinchilla-adjusted for looped architecture) |
 
@@ -216,7 +217,7 @@ Where:
 
 The injection of `e` at every step is what prevents the model from drifting — it keeps the original input signal alive throughout the entire recurrence depth.
 
-The full implementation is in [`open_mythos/main.py`](open_mythos/main.py). See the [`OpenMythos` class reference](docs/open_mythos.md) for a detailed API walkthrough, configuration options, and usage examples.
+The implementation lives in the [`open_mythos/`](open_mythos/) package (`config.py`, `attention/`, `moe/`, `recurrence/`, `blocks.py`, `model.py`); `main.py` is a re-export shim kept for backwards compatibility. See the [`OpenMythos` class reference](docs/open_mythos.md) for a detailed API walkthrough, configuration options, and usage examples.
 
 ### Attention Implementations
 
@@ -248,6 +249,13 @@ This is why Mythos feels qualitatively different from other models on novel ques
 Train on 5-hop reasoning chains. Test on 10-hop. Vanilla transformer fails. Looped transformer succeeds — by running more inference-time loops. This maps directly to the observation that Mythos handles deeply compositional problems (multi-step math, long-horizon planning, layered arguments) without explicit chain-of-thought.
 
 More loops at inference = deeper reasoning chains = harder problems solved.
+
+> **Status of this claim in this repository:** the controlled test in
+> [`docs/depth_extrapolation_experiment.md`](docs/depth_extrapolation_experiment.md)
+> measured depth participation but **no** inference-time extrapolation: on carry-addition,
+> 1 loop gave 1.7% accuracy and 4 loops gave 98.7%, yet 8/16/32 loops stayed flat at 98.7%
+> (and 32-bit parity was not learnable at any depth). Treat "more loops at inference" as
+> an unconfirmed hypothesis, not a property this codebase demonstrates.
 
 ### 3. Latent Thoughts as Implicit Chain-of-Thought
 
