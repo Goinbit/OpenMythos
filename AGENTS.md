@@ -248,8 +248,8 @@ All work in this project must reference the phase/item below when opening a PR (
 |---|---|---|
 | Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部 |
 | Stage 1 契约硬化 | ✅ 完成 | P1.1-P1.5 全部 |
-| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 · 现测 **320 passed** |
-| Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
+| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 · 现测 **340 passed** |
+| Stage 3 性能融合 | ✅ 完成(性能读数 2026-11-24 首次落地) | P3.1-P3.8 全部(含 P3.3 独立 PR 合并)· `benchmarks/gate_bench.py` 上线后首次产出 CPU 侧读数:**MoE 向量化 3.270×(arm64)/ 2.732-3.137×(x86)、SDPA 1.079×(arm64)/ 1.514-1.546×(x86),同 seq256 同版本栈** —— 两 ISA 结论相反:P3.2 的 ≥3× 在 arm64 达成、在 x86 跨线,P3.1 的 ≥1.5× 反之;两者都只是 CPU 侧读数,退出门槛要的 3B **GPU** 吞吐仍未答(需硬件) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
 | small LM 本机轨道(计划外) | ✅ 收束(T1-T6) | **最终交付 v9-T5 75k**:val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · endings 36/60;T6 平衡化负交换已记录([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
@@ -257,28 +257,29 @@ All work in this project must reference the phase/item below when opening a PR (
 | 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
-**代码侧本地可推进范围内:0 技术债;验证通道缺口已补上、常态化、闸门口径漂移已闭掉,并且口径本身现在由闸门自证。** CI 通道形态:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 即自动跑三闸门;改动批次一律"从 fork `main` 起短分支 → fork 内 PR(自动带 checks)→ `--merge` 合入",本轮实战五次:PR [#2](https://github.com/Goinbit/OpenMythos/pull/2)(代码:pin torch)→ `0ac4948`;PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f`;PR [#6](https://github.com/Goinbit/OpenMythos/pull/6)(代码:闸门自证)→ **`8d994f2`**;本条目为 docs 批。闸门版本栈钉到位且收进单一来源:workflow 级 `env:` 定义 `torch==2.12.0`(test 双腿 + typecheck)+ `mypy==2.4.1` + `ruff==0.15.8` = canonical `.venv-arm64` 口径,**install 引用该变量,每个 job 在判定步之前跑 `examples.ci_gate_stack` 断言实际解析结果**(runner 日志实测 `[gate-stack] OK torch 2.12.0+cpu matches pin 2.12.0`,四个 job 各有);首个 pin 后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿同为 **`torch 2.12.0+cpu`** / 各 **301 passed**(12.31s / 18.32s)/ mypy **0 errors 35 files** / ruff 全过;`d3ce0f2` 的 run [`45335182662`](https://github.com/Goinbit/OpenMythos/actions/runs/45335182662) 与 `9112570` 的 run [`45336603284`](https://github.com/Goinbit/OpenMythos/actions/runs/45336603284) 同样 4/4(12.75s / 18.35s);合入 PR #6 后的 `8d994f2` run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 双腿 **320 passed** —— **主干每次合入都自动跑一遍闸:已核 6 条 run 全绿,计数随合入前进**(清单与口径见日志条目)。**仍按腿自由解析的层**:numpy(2.2.6 / 2.5.5)、transformers(5.20.2 / 5.24.0)、datasets(5.2.0)、pytest(9.2.0)—— 这些不是判定口径(除 numpy 外),刻意不钉以免每次上游发版都要改文件,引用时按此说明。分支拓扑:上游 PR #91 的 head = `codex/sync-main-with-origin-20260524` @ **`66c40bb`**(`state=open / mergeable=MERGEABLE`,自 2026-11-01 等裁决),fork `main` 领先 upstream `origin/main`(kyegomez)**123 commits**、领先该 head **13 commits**(实测于 `8d994f2`,口径 `gh api repos/Goinbit/OpenMythos/compare/<upstream>...<fork main>`;每次 PR 合入 +2,**别把主干计数或 SHA 当常量写进结论**) —— 日常提交从此走 fork `main` 短分支,不再触碰 PR #91 的 head,既守住"先不推送"对该分支的约束,也解除"docs 提交推送 = 对上游可见"的两难。**PR #1 之前的 100+ 历史提交仍未有过任何 check-run**(Actions 无法对过去补跑)。最大交付风险已从"绿只有本机证据"降为"绿有第三方环境 + 主干持续 + 版本栈对齐三重背书,但历史批次仍未过闸"。
+**代码侧本地可推进范围内:0 技术债;验证通道缺口已补上、常态化、闸门口径漂移已闭掉,并且口径本身现在由闸门自证。** CI 通道形态:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 即自动跑三闸门;改动批次一律"从 fork `main` 起短分支 → fork 内 PR(自动带 checks)→ `--merge` 合入",本轮实战六次:PR [#2](https://github.com/Goinbit/OpenMythos/pull/2)(代码:pin torch)→ `0ac4948`;PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f`;PR [#6](https://github.com/Goinbit/OpenMythos/pull/6)(代码:闸门自证)→ `8d994f2`;PR #7(docs)→ `a31c272`;PR [#8](https://github.com/Goinbit/OpenMythos/pull/8)(代码:benchmarks harness + advisory 计时 job)→ **`b8a604c`**;本条目为 docs 批。闸门版本栈钉到位且收进单一来源:workflow 级 `env:` 定义 `torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8` = canonical `.venv-arm64` 口径,**install 引用该变量,每个 job 在判定步(或计时步)之前跑 `examples.ci_gate_stack` 断言实际解析结果**(runner 日志实测 `[gate-stack] OK torch 2.12.0+cpu matches pin 2.12.0`,五个 job 各有);首个 pin 后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿同为 **`torch 2.12.0+cpu`** / 各 **301 passed**(12.31s / 18.32s)/ mypy **0 errors 35 files** / ruff 全过;`d3ce0f2` 的 run [`45335182662`](https://github.com/Goinbit/OpenMythos/actions/runs/45335182662) 与 `9112570` 的 run [`45336603284`](https://github.com/Goinbit/OpenMythos/actions/runs/45336603284) 同样 4/4(12.75s / 18.35s);合入 PR #6 后的 `8d994f2` run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 双腿 **320 passed**;合入 PR #8 后的 `b8a604c` run [`45363445179`](https://github.com/Goinbit/OpenMythos/actions/runs/45363445179) 起为 **5/5**,双腿 **340 passed**(19.19s / 20.41s)且 benchmark job 产出 `gate_bench.json` artifact —— **主干每次合入都自动跑一遍闸:已核 8 条 run 全绿,计数随合入前进**(清单与口径见日志条目)。**仍按腿自由解析的层**:numpy(2.2.6 / 2.5.5)、transformers(5.20.2 / 5.24.0)、datasets(5.2.0)、pytest(9.2.0)—— 这些不是判定口径(除 numpy 外),刻意不钉以免每次上游发版都要改文件,引用时按此说明。分支拓扑:上游 PR #91 的 head = `codex/sync-main-with-origin-20260524` @ **`66c40bb`**(`state=open / mergeable=MERGEABLE`,自 2026-11-01 等裁决;PR #8 合入后复测仍是 `66c40bb` ✅),fork `main` 领先 upstream `origin/main`(kyegomez)**128 commits**、领先该 head **18 commits**(实测于 `b8a604c`,口径 `gh api repos/Goinbit/OpenMythos/compare/<upstream>...<fork main>`;**增量 = 分支提交数 + 1 个 merge commit**,本轮 PR #8 带 2 个提交故 +3,旧条目"每次合入 +2"只对单提交分支成立,**别把主干计数或 SHA 当常量写进结论**) —— 日常提交从此走 fork `main` 短分支,不再触碰 PR #91 的 head,既守住"先不推送"对该分支的约束,也解除"docs 提交推送 = 对上游可见"的两难。**PR #1 之前的 100+ 历史提交仍未有过任何 check-run**(Actions 无法对过去补跑)。最大交付风险已从"绿只有本机证据"降为"绿有第三方环境 + 主干持续 + 版本栈对齐三重背书,但历史批次仍未过闸"。
 
 ### 基础设施齐备度
 
 | 项 | 状态 |
 |---|---|
-| **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
-| pytest 守护 | ✅ **320 passed / 0 skipped**(2026-11-24 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试;历史条目中的"301"= 加 `ci_gate_stack` 19 项之前,"310"= 301 + 9)|
-| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1026** stmts,2026-11-24 重测)—— 超阶段 2 ≥70% 门槛,百分比自 10-24 持平,语句数 +78 |
-| GitHub Actions CI | ✅ **首批真实运行 2026-11-24 → 常态化到 base 分支 → 口径钉齐 → 口径自证(四步同日完成)** — ① fork 内自开 PR [#1](https://github.com/Goinbit/OpenMythos/pull/1) 4/4 check-run 全绿并合入 fork `main`(`b42aa38`),workflow 进 base 后 push 事件也触发;② **把 torch 层钉住**:`1ae53e6` 在 test 双腿 + typecheck 三处 `torch==2.12.0`(与 canonical `.venv-arm64` 同代 stub),经 PR [#2](https://github.com/Goinbit/OpenMythos/pull/2) run [`45333822067`](https://github.com/Goinbit/OpenMythos/actions/runs/45333822067) 4/4 → 合入 `0ac4948`;③ 合入后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿 `torch 2.12.0+cpu` / 各 **301 passed** / mypy **0 errors 35 files** / ruff 全过 —— 与本机对标口径**同栈同计数**;④ **口径自证**:`d686655` 把三层 pin 收进 workflow `env:` 单一源,三个 job 各加 `Assert gate stack` 且排在判定步之前(新增 `examples/ci_gate_stack.py` + 19 项测试,其中 5 项把 ci.yml 结构本身当契约测),经 PR [#6](https://github.com/Goinbit/OpenMythos/pull/6) run [`45358290221`](https://github.com/Goinbit/OpenMythos/actions/runs/45358290221) 4/4 → 合入 **`8d994f2`**;主干 push run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 4/4 且四个 job 日志逐条 `[gate-stack] OK torch 2.12.0+cpu` / `mypy 2.4.1` / `ruff 0.15.8`,双腿 **320 passed** —— **自此 green 自带版本坐标,runner 解析出别的栈会在产出判定前先红**。Repo Actions 本就是 `enabled: true`(早前"has_actions=false" 是查询了不存在字段的结果,已纠偏)。**仍按腿漂移的层**:numpy 2.2.6/2.5.5、transformers 5.20.2/5.24.0、datasets 5.2.0、pytest 9.2.0(本机 9.0.3)—— 未钉,判定不依赖它们(numpy 例外:它是 pyarrow wheel 分叉的那一层,已在注释里写明为何不钉回)。**主干 push run 自 workflow 进 base 后逐次全绿**(已核 6 条:`45332751411` / `45334069724` / `45335182662` / `45336603284` / `45337780378` / `45358591379`;每合入一次即新增一条,计数不钉死 —— 核对 `gh run list --branch main --event push`)—— 三闸门自此是"每次合入自动跑"的常态闸,不再是一次性验证。**PR #1 之前的 100+ 历史提交仍无任何 check-run** |
+| **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
+| pytest 守护 | ✅ **340 passed / 0 skipped**(2026-11-24 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试;历史条目中的"301"= 加 `ci_gate_stack` 19 项之前,"310"= 301 + 9,"320"= 301 + 19,**340**= 320 + `gate_bench` 19 + benchmark 契约 1)|
+| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1028** stmts,2026-11-24 因本轮快照仍写 1026 而重测 —— 差 2 语句来自 `benchmarks/` 之外的既有包,`open_mythos/` 自 `7eba113` 未改)—— 超阶段 2 ≥70% 门槛,百分比自 10-24 持平 |
+| GitHub Actions CI | ✅ **首批真实运行 2026-11-24 → 常态化到 base 分支 → 口径钉齐 → 口径自证 → 计时通道(五步同日完成)** — ① fork 内自开 PR [#1](https://github.com/Goinbit/OpenMythos/pull/1) 4/4 check-run 全绿并合入 fork `main`(`b42aa38`),workflow 进 base 后 push 事件也触发;② **把 torch 层钉住**:`1ae53e6` 在 test 双腿 + typecheck 三处 `torch==2.12.0`(与 canonical `.venv-arm64` 同代 stub),经 PR [#2](https://github.com/Goinbit/OpenMythos/pull/2) run [`45333822067`](https://github.com/Goinbit/OpenMythos/actions/runs/45333822067) 4/4 → 合入 `0ac4948`;③ 合入后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿 `torch 2.12.0+cpu` / 各 **301 passed** / mypy **0 errors 35 files** / ruff 全过 —— 与本机对标口径**同栈同计数**;④ **口径自证**:`d686655` 把三层 pin 收进 workflow `env:` 单一源,三个 job 各加 `Assert gate stack` 且排在判定步之前(新增 `examples/ci_gate_stack.py` + 19 项测试,其中 5 项把 ci.yml 结构本身当契约测),经 PR [#6](https://github.com/Goinbit/OpenMythos/pull/6) run [`45358290221`](https://github.com/Goinbit/OpenMythos/actions/runs/45358290221) 4/4 → 合入 **`8d994f2`**;主干 push run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 4/4 且四个 job 日志逐条 `[gate-stack] OK torch 2.12.0+cpu` / `mypy 2.4.1` / `ruff 0.15.8`,双腿 **320 passed** —— **自此 green 自带版本坐标,runner 解析出别的栈会在产出判定前先红**;⑤ **计时通道**:`4e72899` + `02a68f1` 新增 `benchmarks/gate_bench.py` 与第 5 个 job(`gate benchmark (advisory)` / `continue-on-error: true`),该 job 同样先跑 `Assert gate stack` 再计时,并把 `gate_bench.json` 上传为 artifact;经 PR [#8](https://github.com/Goinbit/OpenMythos/pull/8) run [`45363098767`](https://github.com/Goinbit/OpenMythos/actions/runs/45363098767) **5/5** → 合入 **`b8a604c`**;主干 push run [`45363445179`](https://github.com/Goinbit/OpenMythos/actions/runs/45363445179) 5/5,双腿 **340 passed** @ `torch 2.12.0+cpu`。**Repo Actions 本就是 `enabled: true`**(早前"has_actions=false" 是查询了不存在字段的结果,已纠偏)。**仍按腿漂移的层**:numpy 2.2.6/2.5.5、transformers 5.20.2/5.24.0、datasets 5.2.0、pytest 9.2.0(本机 9.0.3)—— 未钉,判定不依赖它们(numpy 例外:它是 pyarrow wheel 分叉的那一层,已在注释里写明为何不钉回)。**主干 push run 自 workflow 进 base 后逐次全绿**(已核 8 条:`45332751411` / `45334069724` / `45335182662` / `45336603284` / `45337780378` / `45358591379` / `45359496661` / `45363445179`;每合入一次即新增一条,计数不钉死 —— 核对 `gh run list --branch main --event push`)—— 三闸门 + 计时自此是"每次合入自动跑"的常态闸,不再是一次性验证。**PR #1 之前的 100+ 历史提交仍无任何 check-run** |
+| 性能证据(benchmarks/) | ✅ **项目史上首次有性能读数**(2026-11-24):`benchmarks/gate_bench.py`(336 行)产出 5 项 —— `sdpa_attention` / `vectorized_moe` 为**比率项**(先证数值等价、再计时,等价不过直接 `RuntimeError` 拒绝出数),`prefill` / `backward` / `decode_step` 为**绝对值项**(无优化前孪生实现,只作前后对比锚点)。本机 `arm64/DEFAULT`(Apple M5)与 CI `x86_64/AVX512` runner 同为 seq256 / repeat3 / threads1 读数**方向相反**:SDPA **1.079×** vs **1.514–1.546×**、MoE **3.270×** vs **2.732–3.137×**(arm64 seq512 另测得 SDPA 1.168× / MoE 3.286×)→ 因此 payload 强制携带 `torch` / `threads` / `cpu(machine+capability)` 坐标。**同一 runner 类三条 run 的绝对值摆动最大 1.83×**(backward 3369.011 → 1846.914 → 1837.779 ms;prefill 987.188 → 664.744 → 575.464 ms),而比率只在 1.51–1.55 / 2.73–3.14 带内波动 → job 设 `continue-on-error`:绝对 CPU 毫秒不可当闸,比率可以 |
 | mypy 类型检查 | ✅ **0 errors / 35 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
 | ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
 | pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
 | Stop hook 日志强制 | ✅ `.Codex/hooks/check_claude_md_updated.sh` |
 | Silent-failure-hunter 残余 | ✅ 0 项 |
-| 文件大小(400 行) | ✅ `open_mythos/` 核心模块满足(最大 `config.py` **360** 行)· `run_3b.py` 60 行保持 · tests/examples 有已知例外(`tests/test_main.py` 1941 · `experimental/moda.py` 1021 · `train_small_lm.py` **746** 等) |
+| 文件大小(400 行) | ✅ `open_mythos/` 核心模块满足(最大 `config.py` **360** 行)· `run_3b.py` 60 行保持 · **`benchmarks/gate_bench.py` 336 行(新目录同样满足 400 行硬闸)** · tests/examples 有已知例外(`tests/test_main.py` 1941 · `experimental/moda.py` 1021 · `train_small_lm.py` **746** 等) |
 
 ---
 
-## 最近一轮重点(2026-11-08 → 2026-11-24 · QuantKB 两周工作落盘 + 闸门可复现性 + CI 真实执行通道建成、常态化、口径钉齐、口径自证)
+## 最近一轮重点(2026-11-08 → 2026-11-24 · QuantKB 两周工作落盘 + 闸门可复现性 + CI 真实执行通道建成、常态化、口径钉齐、口径自证 + 性能闸门首次有数)
 
-### 交付总览 · OpenMythos 11 commits(fork `main` 已含 10 个 + 本条目)+ QuantKB 11 commits
+### 交付总览 · OpenMythos 13 commits(fork `main` 已含 12 个 + 本条目)+ QuantKB 11 commits
 
 | 批次 | Commits | 内容 |
 |---|---|---|
@@ -288,18 +289,20 @@ All work in this project must reference the phase/item below when opening a PR (
 | ④ CI 真实执行通道 | OpenMythos `66c40bb` + fork PR [#1](https://github.com/Goinbit/OpenMythos/pull/1)(**已合入 fork `main` → `b42aa38`**) | 用户选定的路径 A:推送分支 + fork 内自开 PR(base `main` 无 workflow 文件是真实缺口,Repo Actions 早就 enabled)· 首批 4/4 全绿 · **第一次真跑就抓出本地不可见的缺陷**:`numpy<2` 与按 Python 版本分叉的 pyarrow wheel 冲突使 py3.12 腿 collection 挂(3 个 `datasets` 测试模块),py3.10 腿侥幸通过 → 去掉该 pin 后双腿各自解析出与对标环境一致的可复现口径 · 随后经用户授权合入 fork `main`,workflow 进 base 分支 → **push 到 `main` 自动触发三闸门,首个 main run 4/4 success** |
 | ⑤ 闸门口径钉齐 + 批次工作流定型 | OpenMythos `1ae53e6`(经 PR [#2](https://github.com/Goinbit/OpenMythos/pull/2) → fork `main` `0ac4948`) | 合入后再读 CI 日志,发现"4/4 全绿"跑的是未 pin 的 torch(`2.14.1+cpu` / `2.15.0+cpu`)≠ canonical 2.12.0 → **三处 `torch==2.12.0` 精确 pin**(test 双腿 + typecheck);改前先确认 2.12.0+cpu 对 cp310/cp312 manylinux x86_64 wheel 均存在(索引 38 命中),pin 不牺牲可用性 · `pip list` 打印扩到 pyarrow(上一轮真正炸的那层)· **批次工作流定型:从 fork `main` 起短分支 → fork 内 PR(自动带三闸门)→ `--merge` 合入**,本轮全部改动按此形态执行 |
 | ⑥ 闸门自证口径 | OpenMythos `d686655`(经 PR [#6](https://github.com/Goinbit/OpenMythos/pull/6) → fork `main` `8d994f2`) | pin 从六处字面量收进 workflow 级 `env:` 单一源,install 引用变量;三个 job 各加 `Assert gate stack` 并**排在判定步之前**(`examples/ci_gate_stack.py`,含 `+` 的 pin 要求逐字构建段、否则只比基础段并打印实际构建段);`tests/test_ci_gate_stack.py` 19 项里 5 项把 ci.yml 结构当契约测(字面量位置 / install 引用 / 断言步数 / 断言层与安装层对应)· 通道内证据:PR run `45358290221` 与 main run `45358591379` 均 4/4,四个 job 日志逐条 `[gate-stack] OK`,双腿 **320 passed** @ `torch 2.12.0+cpu` |
+| ⑦ 性能闸门首次有数 | OpenMythos `4e72899` + `02a68f1`(经 PR [#8](https://github.com/Goinbit/OpenMythos/pull/8) → fork `main` **`b8a604c`**) | Stage 3 退出门槛写了"benchmark 数据 gate",但项目史上**从未产出过一个性能数**;规则同时禁止"未 gate 的性能改动"——缺的是取证工具而非又一次声明。新增 `benchmarks/gate_bench.py` + `tests/test_gate_bench.py`(19 项)+ CI 第 5 个 advisory job;**先证等价再计时**(比率项跑优化前孪生实现,`require_equivalent` 不过直接 raise,绝不在两个不同函数之间量加速),绝对值项只作前后锚点;**首轮实测两 ISA 结论相反**(同 seq256:SDPA `arm64/DEFAULT` 1.079× vs `x86_64/AVX512` 1.514–1.546×;MoE 3.270× vs 2.732–3.137×)——而第一条 CI payload 根本没有 CPU 坐标字段,这个缺口就是 `02a68f1` 补的;同一 runner 类绝对值摆动至 1.83× → job 设 `continue-on-error`,比率可比、绝对 CPU 毫秒不可当闸 |
 
 ### 里程碑数字对比
 
 | 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| OpenMythos 测试 | 246 | **320** | +74 |
-| 覆盖率 | 97% / 948 stmts | **97% / 1026 stmts** | 百分比持平,基数 +78 |
+| OpenMythos 测试 | 246 | **340** | +94 |
+| 覆盖率 | 97% / 948 stmts | **97% / 1028 stmts**(本轮重测,快照旧写 1026) | 百分比持平,基数 +80 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
-| CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条 4/4 main run(已核 6 条,双腿同 `torch 2.12.0+cpu`,各 320 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`)** | 验证通道建立、持续、可复现且自证 |
+| CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条全绿 main run(已核 8 条,前 6 条 4/4、后 2 条 5/5;双腿同 `torch 2.12.0+cpu`,各 340 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`,自 `b8a604c` 起再加 benchmark artifact)** | 验证通道建立、持续、可复现且自证 |
 | 未推送提交 | 64(内容未入库) | **内容缺口 0**:fork `main`(实测当前 head 用 `gh api repos/Goinbit/OpenMythos/git/ref/heads/main --jq '.object.sha'`)已含全部代码与日志(长分支上 `5b321ee`/`eb106ae` 两个 docs 提交的内容以 cherry-pick `77b18b8`/`7aa035a` 进主干;那两个 SHA 仍留本地未推,以冻住上游 PR #91 的 head) | −64 |
 | headline 语料 | "633 条"(膨胀口径,已失真) | **4,356 唯一标题**(2024-03-14 → 2026-11-24,正类 5.1%) | 口径修正 |
 | QuantKB 测试 | 132 passed / 1 skipped | **134 passed / 1 skipped** | +2(去重回归) |
+| 性能读数 | **0 项**(Stage 3 交付时一条 benchmark 都没跑过,退出门槛写的是「待 CI/GPU」) | **5 项 × 4 次运行**(本机 arm64 seq256/512 + CI x86 三条 run),每条都带 `torch/threads/cpu` 坐标 | 从「无数据」到「有数据,但两 ISA 结论相反」 |
 
 ### 技术决策沉淀(跨轮持续有效)
 
@@ -320,6 +323,8 @@ All work in this project must reference the phase/item below when opening a PR (
 15. **绿色本身是新信息的来源,不是终点** — 同一条 main push run,上一轮读的是"是否 4/4",本轮读的是"4/4 是在哪个栈上取得的",于是发现 torch 漂移并当场修掉(见第 14 条收口)。**只记结论数字的绿灯会被反复引用而无人再看细节**;把日志字段(`pip list` / `torch.__version__`)打进 CI 输出,才让"再读一遍"成为可执行的验证动作
 16. **钉住之后要防的是"再漂回去" —— 版本坐标应由产出结论的进程自己复述并校验** 上一轮靠精确 pin + 注释把口径收口,但注释不会被执行,同一版本字面量在六个地方各写一遍意味着将来改版本必然漏改。本轮正解分两层:①结构层把 pin 收进单一 `env:` 源、install 引用变量;②判定层在**判定步之前**断言实际解析结果(`examples.ci_gate_stack`),再加 5 项把 ci.yml 文本本身当契约测的测试(字面量只允许出现在 `env:`、断言步数、断言层↔安装层对应)。通用形态:凡是"结论必须绑定环境坐标"的地方,坐标不该写在旁边等人去对照,而该由产出该结论的那个进程打印出来并在不符时直接失败
 17. **`pull_request` 的 checks 使用 PR head 分支的 workflow 内容 —— 新闸门可以在合入前就取到外部证据** 本轮实证:PR #6 run `45358290221` 的四个 job 已经执行了新加的 `Assert gate stack` 步(`jobs --jq '.steps[].name'` 可核),因此改动自身的验证不必先合再验;顺序上"先 PR 证据、再合入、再主干证据"两条 run 各取一次,成本只多两分钟
+18. **加速比必须先证数值等价,否则量的不是同一个函数** — 性能改动最省事的假阳性不是慢,而是"拿 A 路径的时间除以 B 路径的时间,而 A/B 算的东西已经不同"。本轮把这条纪律做进 harness 结构里:`sdpa_attention` / `vectorized_moe` 两个比率项在计时**之前**用 `require_equivalent` 对照优化前孪生实现(shape 不符 / 差值非有限 / 超 `EQUIV_TOL=1e-4` 一律 `RuntimeError`),并有 2 项测试把等价守卫 monkeypatch 成必抛来证明它是承重的 —— 删掉守卫,测试红。附带产出:优化前实现(手写 QK^T+mask+softmax、per-token×topk Python 循环)第一次以可执行代码的形式留在仓库里,而不只存在于 PR 描述
+19. **计时结论必须携带硬件坐标,而且坐标会翻转结论** — 同一份 config、同一 `torch 2.12.0+cpu`、同 `threads=1`:SDPA 在 `arm64/DEFAULT`(Apple M5)是 **1.079×**,在 `x86_64/AVX512` runner 上是 **1.514–1.546×**(P3.1 的 ≥1.5× 门槛一边过一边不过);MoE 正相反:arm64 **3.270×** vs x86 **2.732–3.137×**。等价差两边都 ~1e-07,所以差的只有 kernel/ISA。两条推论:①计时 payload 必须写 `cpu = platform.machine()/torch.backends.cpu.get_cpu_capability()` —— 第一条 CI payload 恰好没这个字段,于是它的 1.546× 只能靠"那是 GitHub runner"反推平台,这正是第 16 条要防的情形;②同一 runner 类的绝对值三条摆动至 **1.83×**(backward 3369→1838 ms),所以 benchmark job 是 advisory:可比的是比率,不能当闸的是绝对 CPU 毫秒。第 16 条的通用形态在此原样适用:坐标不该写在旁边等人去对照,而该由产出数字的那个进程打印出来
 
 ---
 
@@ -348,7 +353,11 @@ All work in this project must reference the phase/item below when opening a PR (
 - **`tests/test_main.py` 拆分**(1941 行)/ `test_regression_*` 命名规范落地 — 低优先级,可选
 
 ### 🟡 未入 plan 但可考虑
-- **benchmarks/ harness** — 标准化 forward/backward/generate 计时,PR 前后对比
+- **benchmarks/ harness** ✅ **已交付(2026-11-24,PR #8 → `b8a604c`)** — `benchmarks/gate_bench.py` 产出 `sdpa_attention` / `vectorized_moe`(比率,先证等价)+ `prefill` / `backward` / `decode_step`(绝对锚点),CI 第 5 个 advisory job 上传 `gate_bench.json`。**剩余延伸项(非缺陷,是刻意留白)**:
+  1. **P3.3 / P3.5 / P3.7 仍无比率项** — 静态 KV cache、ACT `.all()` sync 消除、`loop_index_embedding` 预计算三条没有可执行的"优化前孪生实现",所以本轮只能给绝对值;要补就得把旧实现重写成 reference(与 P3.1/P3.2 同一手法)
+  2. **要不要让比率成为闸** — 现是 advisory(x86 摆动 1.83× 的绝对值不可 gate,但比率带宽窄)。若要 gate,合理形态是"比率不得低于上次 artifact 读数的 0.8×"这类带宽判据,而不是阈值判 Stage 3 的 GPU 数字
+  3. **要不要加 OS/arch 矩阵** — 单 runner 只答 x86/AVX512 一边;两 ISA 结论相反这件事目前靠本机 + CI 两边手工对照才发现
+- **`tests/bench_vs_transformer.py` docstring 指向不存在的路径**(`benchmarks/bench_vs_transformer.py`)— 纯文档陈旧,低价值,本轮按外科原则未动
 - **`experimental/moda.py` 毕业**:若决定 MoDA 走主路径,需要 RoPE paradigm 统一、mypy 接管、primitives 对齐
 
 ---
@@ -395,6 +404,56 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-24 · 性能闸门首次有数:先证等价再计时的 harness 上线,首轮读数在两代 ISA 上结论相反
+
+**分支:** OpenMythos `ci/gate-bench`(自 fork `main` `a31c272` 起)· **commits:** `4e72899` + `02a68f1` → PR [#8](https://github.com/Goinbit/OpenMythos/pull/8) run [`45360820946`](https://github.com/Goinbit/OpenMythos/actions/runs/45360820946) 与 [`45363098767`](https://github.com/Goinbit/OpenMythos/actions/runs/45363098767) 均 **5/5** → `--merge` → fork `main` **`b8a604c`**;主干 push run [`45363445179`](https://github.com/Goinbit/OpenMythos/actions/runs/45363445179) 同样 5/5;docs 批次 = 本条目(下一 PR 合入)
+**Agents:** 无 · **完成 IDs:** 无新 plan ID —— 计划外(候选清单 🟡"benchmarks/ harness"):把阶段 3 退出门槛里"必须用 benchmark 数据 gate"从一句声明变成一件工具
+**约束执行:** 全程只动 fork(短分支 + fork 内 PR);上游 PR #91 的 head `66c40bb` 合入后复测**仍是 `66c40bb`** ✅;`先不推送` 对其余分支持续有效
+
+### ✅ 完成
+- **动机**:阶段 3 八项(P3.1-P3.8)当初交付的是**等价测试**,退出门槛要的数字(注意力 ≥1.5×、MoE ≥3×、吞吐 ≥1.8×、显存 −40%)一条都没被测过,日志里写的是"benchmark 延迟到 CI/GPU"。§通用工作规范同时禁止"未 gate 的性能改动(必须 benchmark 数据证明收益)"——规则缺的是取证工具,不是又一次声明。
+- **`benchmarks/gate_bench.py`(新,336 行,仅标准库 + torch)**,两类 case 语义严格分开:
+  - **比率项** `sdpa_attention` / `vectorized_moe`:内联重建**优化前孪生实现**(`_manual_attention` = 手写 `QK^T·head_dim**-0.5` + causal mask + `softmax` + `@V`;`_loop_moe` = per-token × per-slot 的 Python 循环含 `.item()` CUDA sync,即 P3.2 删掉的那种),先跑 `require_equivalent(ref, got)`(shape 不符 / 差值非有限 / 超 `EQUIV_TOL=1e-4` 一律 `RuntimeError`)**再**计时;`timed_ms` 用 `time.perf_counter` 取 repeat 次中位数,`repeat<1` 直接 `ValueError`
+  - **绝对项** `prefill` / `backward` / `decode_step`(`model.generate` ÷ `DECODE_TOKENS`):没有优化前对应物,`Case.ratio is None`,只作后续 PR 的 before/after 锚点,不冒充加速比
+  - `--json` payload 的 `meta` 记录 `torch` / `threads` / `cpu` / `seq_len` / `n_experts` / `dim` / `warmup` / `repeat`
+- **CI 第 5 个 job `gate benchmark (advisory)`**:`continue-on-error: true`;install `"${GATE_TORCH}"` → **`Assert gate stack` 排在计时步之前**(口径自证机制直接复用)→ `python -m benchmarks.gate_bench --seq-len 256 --repeat 3 --threads 1 --json gate_bench.json` → `actions/upload-artifact@v4`(名 `gate-bench-<run_id>`)
+- **TDD**:`tests/test_gate_bench.py` 19 项 —— 中位数数学(monkeypatch `perf_counter`)/ warmup 调用次数 / `repeat=0` 拒绝 / `Case.ratio` 两态 / `require_equivalent` 三种失败(值漂移、shape、NaN)/ 两个比率项 e2e / **`TestEquivalenceGateIsLoadBearing` 2 项把 `require_equivalent` monkeypatch 成必抛,验证守卫真的承重(删掉它 harness 仍能出数,但测试会红)** / 渲染 / payload / `main()` e2e 5 case + meta 含 `platform.machine()`
+- **ci.yml 当契约测**:`tests/test_ci_gate_stack.py` 断言步数 3 → **4**、`GATE_TORCH` 安装点 2 → **3**,新增 `test_benchmark_job_is_advisory_yet_version_anchored`(同时钉住"不判定"与"仍报栈"两件事)
+
+### 📊 测试变化
+- before:320 passed / 0 skipped → after:**340 passed / 0 skipped**(+19 harness +1 ci.yml 契约);本机两腿口径 `pytest tests/ --ignore=tests/test_tokenizer.py -q`(`.venv-arm64` 无 `pytest-timeout`,故不带 CI 的 `--timeout=120`)
+- 3 条预存 warning(`LoRAAdapter` 未初始化 `loop scale`)不变,与本轮改动无关(已在 `-W error::UserWarning` 下复现为预存)
+- 覆盖率 **97% / 1028 stmts**(`open_mythos/` 本轮零改动;快照原写 1026 系上轮未重测,本轮纠正为实测值)· mypy **0 errors / 35 files** · ruff **All checks passed**
+- 新增**外部性能证据类型**:闸门不只产出"绿",还产出"绿 + 计时 + 计时所在栈",artifact 可下载复算(PR ×2 + main ×1 三份 `gate_bench.json` 均已下载核对)
+
+### 📈 首次性能读数(每条都带坐标,否则不构成证据)
+
+| case | 本机 `arm64/DEFAULT`(Apple M5) | CI `x86_64/AVX512`(三条 run,均 seq256/threads1/repeat3) |
+|---|---|---|
+| `sdpa_attention` | **1.079×**(seq256)/ 1.168×(seq512) | 1.546 / 1.526 / **1.514**× |
+| `vectorized_moe` | **3.270×**(seq256)/ 3.286×(seq512) | 2.732 / 3.088 / **3.137**× |
+| `prefill` ms | 126.509 / 216.584 | 987.188 → 664.744 → 575.464 |
+| `backward` ms | 379.507 / 658.739 | 3369.011 → 1846.914 → 1837.779 |
+| `decode_step` ms | 39.848 / 63.103 | 251.104 → 178.250 → 176.414 |
+
+- 等价差两侧同为 `EQUIV_TOL` 的千分之一量级(attention `1.6e-07`~`2.1e-07`;MoE `7.5e-08`~`1.5e-07`)→ "先证等价再计时"的前提在两处都成立,时间差只可能来自 kernel/ISA 而非算法
+- **诚实判读**:P3.1 的"≥1.5× 加速"在 x86 runner 上达成、在 arm64 上**未达成**(1.079×);P3.2 的"n_experts=64 下 ≥3×"在 arm64 上达成、在 x86 上跨线(2.73–3.14×)。两条都是 **CPU 侧**读数;阶段 3 退出门槛真正问的是 **3B 模型 GPU 吞吐 ≥1.8× / 显存 ≤60%**,仍未答(需硬件)
+
+### 🔑 关键决策 / 发现
+- **加速比必须先证数值等价**:两个不同函数之间的时间差不叫加速。把这条做进结构(等价不过 → 拒绝出数)而不是做进注释,并用 monkeypatch 测试证明守卫承重
+- **自纠一次测量混淆**:第一次本机跑用 `--seq-len 512` 去比 CI 的 `256`,于是"平台差异"里混进了"形状差异";按 CI 完整旗标逐字重跑才得出正确读数。**计时对比的旗标必须逐字一致**,这条直接催生 `02a68f1`(把 `cpu=machine/capability` 写进 payload)
+- **硬件坐标是结论的一部分**(决策 16 的推广):`4e72899` 那条 CI payload 恰好没有 cpu 字段,其 1.546× 只能靠"那是 GitHub runner"反推平台 —— 数字自己没说出自己在哪台机器上测的
+- **绝对 CPU 毫秒不可当闸,是实测决定不是保守妥协**:同一 runner 类三条 run 的 backward 摆动至 **1.83×**(3369→1838 ms),而比率带宽仅 1.51–1.55 / 2.73–3.14 → job 设 `continue-on-error`,advisory 记录基线
+- **优化前实现回到仓库**:P3.1/P3.2 删掉的手写路径此前只存在于 PR 描述,现在可执行、可测、可与未来改动对 diff —— 这是 harness 的第二项产出,不在原候选清单文字里
+- **ahead 计数规则精确化**:PR #8 带 2 个提交 → fork `main` 领先 PR #91 head 由 13 变 **18**(实测,含两个 merge commit)。旧写法"每合入一次 +2"只对**单提交分支**成立;正确口径是 `+分支提交数 + 1`
+- **推送通道口径继续有效**:本机到 github.com 的 git-over-HTTPS 仍需 `git -c http.version=HTTP/1.1 push`(该 flag 必须在子命令**之前**,写在后面 git 直接报 usage),而 `gh api` 走 api.github.com 不受影响,因此合入与 run 取证始终可用
+
+### 🧭 留到下阶段
+- **用户决策(新增两项)**:① benchmark job 要不要从 advisory 升为**比率回归闸**(带宽判据,如"不得低于上次 artifact 读数的 0.8×");② 要不要加 OS/arch 矩阵(两 ISA 结论相反目前靠手工两侧对照才发现)。既有决策不变:历史 100+ 提交是否补证据 / 非判定层(numpy、transformers、datasets、pytest)要不要也钉 / PR #91 上游裁决 / Goinmax-clean 镜像推送 / `audit/risk-overlay-zh` 并回
+- **P3.3 / P3.5 / P3.7 仍无比率项**:静态 KV cache、ACT `.all()` sync 消除、`loop_index_embedding` 预计算三条没有可执行的优化前对应物;要补就得把旧实现重写成 reference(与本轮 `_manual_attention` / `_loop_moe` 同一手法)
+- **顺带发现、按外科原则未动**:`tests/bench_vs_transformer.py` 的 docstring 指向不存在的 `benchmarks/bench_vs_transformer.py`(路径在历次搬迁中改名),属纯文档陈旧
+- Stage 5 全体待 GPU;本机低价值项(ruff 0.17 迁移 144 处、`tests/test_main.py` 拆分)不变
 
 ## 2026-11-24 · 闸门自证:pin 收进单一 `env:` 源,每个 job 在判定前先断言自己跑在哪个栈上
 
