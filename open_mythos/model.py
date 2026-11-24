@@ -49,6 +49,10 @@ class OpenMythos(nn.Module):
     - Supports both GQA and MLA attention (set via cfg.attn_type)
     """
 
+    # See recurrence/block.py: buffers exist only as register_buffer names, so the
+    # declared type is what makes slicing them checkable.
+    freqs_cis: torch.Tensor
+
     def __init__(self, cfg: MythosConfig):
         """
         Args:

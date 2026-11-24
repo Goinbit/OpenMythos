@@ -38,6 +38,11 @@ class RecurrentBlock(nn.Module):
     depth-extrapolation property of looped transformers (Saunshi et al., 2025).
     """
 
+    # register_buffer-created attributes are invisible to static analysis: torch's
+    # Module.__getattr__ stub resolves to a union, so declaring the buffer type is
+    # what makes `.shape` / indexing checkable.
+    loop_idx_table: torch.Tensor
+
     def __init__(self, cfg: MythosConfig):
         """
         Args:

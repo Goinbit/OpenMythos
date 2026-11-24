@@ -67,7 +67,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install 'ruff>=0.5.1,<0.15.9'
+      # Exact pin: ruff's default rule set expanded in 0.16+ (144 new style
+      # hits on this tree), so a range made the gate version-dependent.
+      - run: pip install 'ruff==0.15.8'
       - name: ruff check
         # Enforced: lint regressions block PR merge.
         run: ruff check .
@@ -87,7 +89,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --index-url https://download.pytorch.org/whl/cpu torch
-          pip install 'mypy>=1.10' 'numpy<2'
+          # Exact pin: whether an ignore is "used" depends on mypy+torch stub
+          # versions; verified green at mypy 2.4.1 + torch 2.12.0.
+          pip install 'mypy==2.4.1' 'numpy<2'
       - name: mypy
         # Config lives in pyproject.toml; currently passes with 0 errors on
         # main. Enforced (no continue-on-error) so regressions block.
