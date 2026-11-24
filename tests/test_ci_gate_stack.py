@@ -119,11 +119,20 @@ class TestWorkflowSingleSource:
 
     def test_every_job_asserts_its_stack(self) -> None:
         text = CI_YAML.read_text()
-        assert text.count("examples.ci_gate_stack") == 3
+        # test (x2 matrix legs share one step) / lint / typecheck / benchmark.
+        assert text.count("examples.ci_gate_stack") == 4
 
     def test_assertions_cover_the_layers_that_job_installs(self) -> None:
         text = CI_YAML.read_text()
         asserts = [line for line in text.splitlines() if "examples.ci_gate_stack" in line]
-        assert sum("GATE_TORCH" in line for line in asserts) == 2
+        assert sum("GATE_TORCH" in line for line in asserts) == 3
         assert any("GATE_MYPY" in line for line in asserts)
         assert any("GATE_RUFF" in line for line in asserts)
+
+    def test_benchmark_job_is_advisory_yet_version_anchored(self) -> None:
+        """Timings record a baseline; they do not gate, but they do name a stack."""
+        text = CI_YAML.read_text()
+        job = text.split("  benchmark:\n", 1)[1]
+        assert "continue-on-error: true" in job
+        assert 'python -m examples.ci_gate_stack "${GATE_TORCH}"' in job
+        assert "benchmarks.gate_bench" in job
