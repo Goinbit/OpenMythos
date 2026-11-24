@@ -9,6 +9,7 @@ path compute the same function, so the equivalence guard — not the stopwatch
 from __future__ import annotations
 
 import json
+import platform
 
 import pytest
 import torch
@@ -204,4 +205,5 @@ class TestMain:
         meta = json.loads(out.read_text())["meta"]
         assert meta["torch"] == torch.__version__
         assert meta["threads"] == 1
+        assert meta["cpu"].startswith(platform.machine())
         assert meta["seq_len"] == 8

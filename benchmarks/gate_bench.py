@@ -18,8 +18,11 @@ Two case kinds, deliberately different:
 
 Numbers are single-process CPU wall-clock. They bound CPU-side cost, not the
 GPU throughput the Stage 3 exit gate asks for — those still need hardware.
-Thread count is pinned so runs stay comparable, and the JSON payload records
-torch version and threads so a timing carries its own version coordinates.
+Thread count is pinned so runs stay comparable, and the payload records torch
+version, threads and the CPU the kernels ran on: the first two-platform run
+inverted both ratios at identical config (sdpa 1.07x on arm64 vs 1.55x on the
+x86 runner, moe 3.39x vs 2.73x). A timing without those coordinates is not
+comparable to anything, including another timing.
 
 Run:
     python -m benchmarks.gate_bench
@@ -32,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import platform
 import statistics
 import time
 from dataclasses import dataclass
@@ -315,6 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         meta: dict[str, object] = {
             "torch": torch.__version__,
             "threads": args.threads,
+            "cpu": f"{platform.machine()}/{torch.backends.cpu.get_cpu_capability()}",
             "seq_len": args.seq_len,
             "n_experts": args.n_experts,
             "dim": cfg.dim,
