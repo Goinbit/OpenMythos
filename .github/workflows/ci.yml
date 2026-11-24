@@ -13,6 +13,16 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Single source of truth for the stack that decides these verdicts, matching the
+# canonical local gate env (.venv-arm64). Every job installs from these values and
+# then asserts what actually resolved, so "green" cannot silently describe a stack
+# nobody measures locally. Layers that do not decide a verdict (numpy, transformers,
+# datasets, pytest) stay resolved by pip and are printed, not pinned.
+env:
+  GATE_TORCH: "torch==2.12.0"
+  GATE_MYPY: "mypy==2.4.1"
+  GATE_RUFF: "ruff==0.15.8"
+
 jobs:
   test:
     name: pytest (py${{ matrix.python }})
@@ -50,8 +60,13 @@ jobs:
         # manylinux x86_64 wheels for both legs, so the pin costs no availability.
         run: |
           python -m pip install --upgrade pip
-          pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.12.0'
+          pip install --index-url https://download.pytorch.org/whl/cpu "${GATE_TORCH}"
           pip install pytest pytest-timeout "transformers>=4.40.0" "datasets>=2.18.0" "loguru>=0.7.3"
+
+      - name: Assert gate stack
+        # Fail before the verdict step if the runner resolved a different torch,
+        # so a green here always has version coordinates.
+        run: python -m examples.ci_gate_stack "${GATE_TORCH}"
 
       - name: Show environment
         run: |
@@ -82,7 +97,9 @@ jobs:
           cache: pip
       # Exact pin: ruff's default rule set expanded in 0.16+ (144 new style
       # hits on this tree), so a range made the gate version-dependent.
-      - run: pip install 'ruff==0.15.8'
+      - run: pip install "${GATE_RUFF}"
+      - name: Assert gate stack
+        run: python -m examples.ci_gate_stack "${GATE_RUFF}"
       - name: ruff check
         # Enforced: lint regressions block PR merge.
         run: ruff check .
@@ -105,11 +122,14 @@ jobs:
           # and the torch stub generation. Unpinned torch resolved 2.14.1/2.15.0
           # while the local green was measured on 2.12.0 — under a range, the
           # upstream release cadence decides whether the gate holds.
-          pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.12.0'
+          pip install --index-url https://download.pytorch.org/whl/cpu "${GATE_TORCH}"
           # No numpy pin — the canonical local gate env (where that green was
           # measured) runs numpy 2.4.6, and pinning numpy<2 there would describe
           # a stack nobody verifies.
-          pip install 'mypy==2.4.1'
+          pip install "${GATE_MYPY}"
+      - name: Assert gate stack
+        # Both layers decide this verdict, so both are checked before it runs.
+        run: python -m examples.ci_gate_stack "${GATE_TORCH}" "${GATE_MYPY}"
       - name: mypy
         # Config lives in pyproject.toml; currently passes with 0 errors on
         # main. Enforced (no continue-on-error) so regressions block.
