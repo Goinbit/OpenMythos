@@ -242,13 +242,13 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ---
 
-## 当前整体状态(截至 2026-10-24)
+## 当前整体状态(截至 2026-11-24)
 
 | Stage | 状态 | 备注 |
 |---|---|---|
 | Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部 |
 | Stage 1 契约硬化 | ✅ 完成 | P1.1-P1.5 全部 |
-| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 + 246 tests |
+| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 · 现测 **301 passed** |
 | Stage 3 性能融合 | ✅ 完成 | P3.1-P3.8 全部(含 P3.3 独立 PR 合并) |
 | Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
@@ -257,44 +257,46 @@ All work in this project must reference the phase/item below when opening a PR (
 | 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
-**本地可推进范围内:0 技术债。** 剩余:63 个未推送提交的合入决策(见下一轮候选)+ GPU 依赖项 + 低价值风格清扫。
+**代码侧本地可推进范围内:0 技术债;验证通道侧有 1 项结构性缺口。** 106 个提交领先 upstream `main`,已全部推送 fork(`Goinbit/OpenMythos`,不再存在"未推送提交"),PR #91 自 2026-11-01 开放等上游裁决 —— 但 **CI 三闸门从未对这批工作执行过**(fork 未启用 Actions)。最大交付风险不在代码质量,在"绿"这个字目前只有本机单一环境的证据。
 
 ### 基础设施齐备度
 
 | 项 | 状态 |
 |---|---|
-| pytest 守护 | ✅ 246 passed / 0 skipped(2026-10-24 实测) |
-| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,948 stmts)— 超阶段 2 ≥70% 门槛 |
-| GitHub Actions CI | ✅ 3 jobs(test / lint / typecheck,ruff+mypy 均硬闸) |
-| mypy 类型检查 | ✅ 0 errors / 34 files(硬闸) |
+| **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + **mypy 2.4.1** + **ruff 0.15.8** + pytest —— 三闸门唯一同时可跑且全绿的环境。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
+| pytest 守护 | ✅ **301 passed / 0 skipped**(2026-11-24 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试;历史条目中的"310"= 301 + 9)|
+| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1026** stmts,2026-11-24 重测)—— 超阶段 2 ≥70% 门槛,百分比自 10-24 持平,语句数 +78 |
+| GitHub Actions CI | ⚠️ **配置齐备、从未运行** — 3 jobs(test / lint / typecheck)定义正确,但 fork 的 Actions 未启用(`has_actions=false`),PR #91 的 `check-runs` 为空,上游 workflow 清单只有 Copilot/Dependabot。历史条目里的 ✅ 是"已定义"而非"已通过" |
+| mypy 类型检查 | ✅ **0 errors / 35 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
+| ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
 | pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
 | Stop hook 日志强制 | ✅ `.Codex/hooks/check_claude_md_updated.sh` |
 | Silent-failure-hunter 残余 | ✅ 0 项 |
-| 文件大小(400 行) | ✅ `open_mythos/` 核心模块满足(最大 `config.py` 314 行)· `run_3b.py` 60 行保持 · tests/examples 有已知例外(`test_main.py` 1941 · `experimental/moda.py` 1021 · `train_small_lm.py` 533 等) |
+| 文件大小(400 行) | ✅ `open_mythos/` 核心模块满足(最大 `config.py` **360** 行)· `run_3b.py` 60 行保持 · tests/examples 有已知例外(`tests/test_main.py` 1941 · `experimental/moda.py` 1021 · `train_small_lm.py` **746** 等) |
 
 ---
 
-## 最近一轮重点(2026-06-04 → 2026-10-24 · small LM 工具链 + 进度审计修复)
+## 最近一轮重点(2026-11-08 → 2026-11-24 · QuantKB 两周工作落盘 + 闸门可复现性)
 
-### 交付总览 · 17 commits · small LM 训练/评估闭环 + 审计修复
+### 交付总览 · OpenMythos 1 commit + QuantKB 11 commits
 
 | 批次 | Commits | 内容 |
 |---|---|---|
-| ① small LM 训练/生成闭环 | `54d9f37` `a9d3d28` `5b376cb` | train/generate/evaluate_small_lm + tiny 闭环 · stop reason 上报 · 文本清理 |
-| ② v5→v6.1 训练与归档 | `dcb16a9` `5b8ddf2` `8271d32` `f3bb2cc` `c45ed06` | runbook ×2 · checkpoint 归档 ×2 · compact-v61 preset |
-| ③ 质量/coherence 指标 | `dbe7ed9` `cca2d09` `a79e6a6` `3193912` | quality/coherence 启发式指标 · coherence-v1/v2 presets |
-| ④ eval 报告工具 | `2802b7f` `6eb2570` `0a704fa` | 报告对比 CLI · latest/glob 自动发现 · CSV 输出 |
-| ⑤ 审计修复(2026-10-24) | `40d9d41` + docs 提交 | mypy stale-ignore 3 处 · 文档校准 · 36 处日志 SHA 回填 · 覆盖率基线 |
+| ① QuantKB 两周工作入库 | `3707001` … `b17ae70`(11 个,按主题拆分) | `.gitignore` 先落(防 1GB venv / 24MB 生成物误入库)· 中文词典 v1 + laya A/B · RSS 管道 · V3/极端回归/条件变量三连判负实验 · 风控叠加层 v0/v1 · 池级验收 v0 · Gate 0.5 噪声鲁棒 · 死导入清扫 · 11-08 晨报 |
+| ② headline 语料缺陷修复 | `40cff96`(模块首次入库即带修复,buggy 版从未进 git) | 现场日志抓到"73 条标题却归档 58 条新"→ 去重按 pubdate 窗而非全局首见 → 归档 58× 膨胀(252,246 行仅 4,356 唯一标题)· TDD `test_regression_stale_pubdate_not_reappended` · 一次性重建(备份 `.bak-20261124`)· 10:02 launchd 实跑验证 "archived 0 new" |
+| ③ 闸门可复现性 | OpenMythos `7eba113` | buffer 类级注解替代 ignore(mypy 2.4.1 + torch 2.12 下 6 错 → 0)· `run_3b.py` 两处 ignore 恢复(两代 stub 均必要)· CI 精确 pin `ruff==0.15.8` / `mypy==2.4.1` |
 
 ### 里程碑数字对比
 
-| 维度 | 2026-04-24 快照 | 2026-10-24 实测 | Δ |
+| 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| 测试数 | 197 | **246** | +49 |
-| 覆盖率(open_mythos) | 未测 | **97%** | 基线建立 |
-| mypy 错误 | 0 | **0**(修复 3 处 stale ignore 后) | 持平 |
-| small LM 模型卡 | 0 | **8**(v0→v6.1) | +8 |
-| 未推送提交 | 0 | **64** | ⚠️ 待合入决策 |
+| OpenMythos 测试 | 246 | **301** | +55 |
+| 覆盖率 | 97% / 948 stmts | **97% / 1026 stmts** | 百分比持平,基数 +78 |
+| mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
+| CI | ✅ 3 jobs | **从未运行**(fork Actions 未启用,PR #91 零 check-run) | ⚠️ 声明纠偏 |
+| 未推送提交 | 64(待合入决策) | **0**(fork 已同步,PR #91 等上游裁决) | −64 |
+| headline 语料 | "633 条"(膨胀口径,已失真) | **4,356 唯一标题**(2024-03-14 → 2026-11-24,正类 5.1%) | 口径修正 |
+| QuantKB 测试 | 132 passed / 1 skipped | **134 passed / 1 skipped** | +2(去重回归) |
 
 ### 技术决策沉淀(跨轮持续有效)
 
@@ -302,17 +304,26 @@ All work in this project must reference the phase/item below when opening a PR (
 2. **Protocol 工厂模式**:抽 `*Protocol` + `*(cfg)` 工厂,替代硬编码 `if cfg.xxx == "..."`。已有三套:`build_attention` / `build_injection` / `build_router`
 3. **Silent-failure guard 用 `raise` 不 `assert`** — `python -O` 剥离 assert,训练关键不变量必须真 raise(§通用工作规范 · 禁止项)
 4. **Guard 放 `forward` 入口而非下游调用处** — 错误消息可行动,不落到 opaque 的 tensor-shape 失败
-5. **`type: ignore[具体码]` + `warn_unused_ignores=true`** — stale ignore 自动暴露(2026-10-24 实证:3 处冗余 ignore 被配置抓住并修复)
+5. **`type: ignore[具体码]` + `warn_unused_ignores=true`** — stale ignore 自动暴露(2026-10-24 实证:3 处冗余 ignore 被配置抓住并修复)。**但"冗余"是版本相对的**:其中 2 处在当代 stub 下重新变成必要(见第 9 条)
 6. **typecheck 直接硬闸 / lint 先灰度** — 基线清零的门 direct,基线未清的门 `continue-on-error` 过渡
 7. **pre-commit 不作 CI 闸** — 本地提速工具;CI 独立跑 mypy+ruff 覆盖率足够
 8. **state_dict 布局允许打破**(前提:无预发布 checkpoint)— 预发布期可接受的破坏性变更
+9. **闸门声明必须绑定工具版本** — "mypy 0 errors" 这类结论的有效期取决于 torch stub × mypy major × ruff 版本;CI 用范围版本(`>=`)等于把判定权交给上游发版。本轮双重实证:mypy 1.20→2.4 使 3 处 ignore 判定翻转并新增 3 处 index 报错;ruff 0.15→0.17 在同一棵树上报出 144 处新风格项。正解 = 精确 pin + 把钉定环境写进本文件
+10. **`register_buffer` 的属性对静态分析不可见** — 当代 torch stub 把 `Module.__getattr__` 解析成 `Size | Tensor | Module`,于是 buffer 的 `.shape` / 切片直接报 index 错。类级注解(`loop_idx_table: torch.Tensor`)是根因修法:比 ignore 更根本,且不与 `warn_unused_ignores` 冲突
+11. **一个模块内的两种新鲜度语义必须分开实现** — 滚动风控文件按 24h 全量重写(事件衰减),归档 append-only 全局去重(语料积累);把前者的时间窗照搬进后者,会让 feeds 反复回供的旧标题每 10 分钟重复入库,58× 膨胀持续了 13 天才被日志抓到
+12. **日志里的量化声明是待验事实** — "633 条语料""CI 3 jobs ✅"都反映写入当时的口径,本轮两条实测均失真。引用历史数字前先重测,尤其是用来做规划投入的那类(语料规模直接改写了 laya 标注的开工时点)
 
 ---
 
 ## 下一轮候选(按可行性)
 
 ### 🔴 需用户决策
-- **推送 + PR 合入 main** — 64 个本地提交(含 15 个 small LM 工具链)从未推送;CI 只在 main/PR 触发,这批工作未经 CI 验证
+- **给 CI 一条真实运行通道**(本轮新暴露的唯一验证缺口)——106 个提交从未过 CI。三条可选路径:
+  1. 在 fork 设置启用 Actions(`Goinbit/OpenMythos` → Actions = allow)后,开 fork 内 PR(`main` ← 当前分支)→ 三闸门即刻真实执行。代价:远程设置改动 + 一个 PR(外发动作)
+  2. 本地把三闸门脚本化(`.venv-arm64/bin/python -m pytest / -m mypy / -m ruff`)当作临时替代 → 零外发,但 PR 合入仍无第三方验证
+  3. 等上游 PR #91 由维护者触发 CI → 取决于对方是否启用,不可控
+- **PR #91 合入裁决** — 自 2026-11-01 开放,`state=open / merged=false`,最后活动 2026-11-06,上游无回应
+- **Goinmax-clean 镜像推送**(253 refs,密钥已剥离)· **`audit/risk-overlay-zh` 并回**(等回滚实验收束)—— 均延续前轮
 
 ### 🔴 GPU 必需(Stage 5 全体)
 - **P5.1 Tensor Parallelism** — `ColumnParallelLinear` / `RowParallelLinear` 抽象 · 2 路 TP 下 3B 模型 loss 与单卡 FSDP 等价
@@ -322,6 +333,8 @@ All work in this project must reference the phase/item below when opening a PR (
 - **P5.5 长上下文 32K+** — 移除 `_causal_mask` 显式分配 · `variants.py` 中 `max_seq_len=1_000_000` 降级
 
 ### 🟢 本地可做 · 低价值清扫
+- **ruff 升版迁移(0.15.8 → 0.17+)** — 144 处风格项:`I001` 35 / `UP045` 26 / `PLR0402` 16 / `UP006` 16 / `RUF022` 8 / `RUF059` 8,其余零散;115 处 `--fix` 可自动。当前用精确 pin 规避,真要升版则先扫这批
+- **QuantKB `freqtrade_strategies/` 2 处预存 F401** — `talib.abstract` 未用导入(`QuantkbMomentum_Divergence.py:8` / `QuantkbRange_Position.py:8`),与本轮工作无关故未动
 - **docs/ mkdocs 渲染**:`docs/` 有 md 未渲染
 - **README.md 版本信息同步**:定期检查 PyPI badge + 文档链接
 - **`tests/test_main.py` 拆分**(1941 行)/ `test_regression_*` 命名规范落地 — 低优先级,可选
@@ -374,6 +387,39 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-24 · 进度实测:QuantKB 两周工作入库、语料膨胀缺陷修复、闸门可复现性纠偏
+
+**分支:** OpenMythos `codex/sync-main-with-origin-20260524`(commit `7eba113` + 本条目 docs 提交)· QuantKB `main`(`3707001`…`b17ae70`,11 commits)
+**Agents:** 无 · **完成 IDs:** 无新 plan ID —— 计划外:交付验证基础设施纠偏 + QuantKB 落盘
+**约束:全程零推送、零外发** ✅(用户此前指令"先不推送"持续有效)
+
+### ✅ 完成
+- **进度核对(文档 vs 实测)**:OpenMythos 测试 **301 passed**(文档快照记 246)· 覆盖率 **97% / 1026 stmts**(948)· `config.py` 360 行(快照 314)· `train_small_lm.py` 746 行(快照 533)· fork 分支已同步,106 commits 领先 upstream `main`,PR #91 仍 open
+- **⚠️ CI 从未执行这批工作**:`gh api .../commits/<head>/check-runs` 空、`gh run list --repo Goinbit/OpenMythos` 为 `[]`、fork `has_actions=false`、上游 workflow 清单只有 Copilot/Dependabot —— 快照里的 "GitHub Actions CI ✅ 3 jobs" 一直是"已定义"而非"已通过",已纠偏
+- **headline 归档膨胀缺陷(TDD)**:11-08 上线的积累器把滚动风控文件的 24h 窗口语义误用为去重窗口,feeds 反复回供的旧标题每轮重新入库 —— 现场日志"73 条标题 / archived 58 new"暴露,实测 442 个标题重复 >100 次(最坏 1,843 次 ≈ 144 轮/天 × 13 天)。`append_headline_archive` 去重口径改为**全局首见**(pubdate 只作时间戳),`tools/rss_event_stream.py:67` 调用点同步;新增 `test_regression_stale_pubdate_not_reappended` 钉死;归档一次性重建 252,246 → **4,356 行**(零重复、时序完整,备份 `.bak-20261124`);10:02 launchd 实跑验证输出 "archived 0 new"
+- **语料真实规模(改写 laya 标注规划前提)**:4,356 唯一标题 / 正类 5.1% ≈ 222 条,新增 ~240 条/天 → 攒 500 正类样本需 ~40 天,而非 11-08 条目按"633 条"口径推的时点
+- **QuantKB 两周工作全部入库(11 commits,按主题拆分)**:`.gitignore` 先行落盘(1.0GB `.venv` + 24MB 生成数据 + 工具缓存),此后任何 `git add -A` 不可能误收;内容覆盖中文词典 v1、RSS 管道、三连锁死的判负实验、风控叠加层 v0/v1、池级验收 v0、Gate 0.5 噪声鲁棒、11-08 晨报
+- **QuantKB 测试路径恢复**:runbook 文档指定的 `.venv/bin/python -m pytest` 实际无 pytest(该 venv 装的是 laya/torch);`.pyc` 缓存显示历史测试一直在系统 `python3` 3.14.3 跑 —— 实测 **134 passed / 1 skipped** 与日志口径一致
+- **闸门可复现性(`7eba113`)**:mypy 在当代环境(2.4.1 + torch 2.12.0)报 6 错,根因是 10-24 审计删的 3 个 ignore 只在特定 stub 组合下冗余 —— 库侧改用类级 buffer 注解根治(`recurrence/block.py:44` `loop_idx_table: torch.Tensor`、`model.py:54` `freqs_cis: torch.Tensor`),`training/run_3b.py:40,46` 两个 ignore 恢复(两代 stub 均必要),`ci.yml` 由范围版本改精确 pin(`ruff==0.15.8` / `mypy==2.4.1`)并写明原因 · 结果:**mypy 0 errors / 35 files · ruff All checks passed · 301 passed**
+
+### 📊 测试变化
+- before:246 passed(快照口径,环境已不可复现)/ QuantKB 132 passed(未入库)
+- after:**OpenMythos 301 passed / QuantKB 134 passed + 1 skipped**
+- 新增:去重回归 ×2(`tests/test_news_stream.py::TestArchive`)
+- 覆盖率 97% 保持;mypy/ruff 在钉定版本下双绿,且钉定环境首次写进本文件
+
+### 🔑 关键决策 / 发现
+- **"绿"这个词必须有环境坐标** —— 同一棵树实测:mypy 1.20.2 + torch 2.2.2 报 3 错、mypy 2.4.1 + torch 2.12.0 修复前报 6 错、修复后 0;ruff 0.15.8 全绿而 0.17.6 报 144。范围版本 pin(`>=`)等于把判定权交给上游发版,因此版本、环境、命令三者都要落进文档
+- **注解优于 ignore** —— `register_buffer` 创建的属性对 mypy 只存在于 `__getattr__` 的 union 返回值里;声明类型是根因修法,不占用 ignore 配额、不会被 `warn_unused_ignores` 反噬
+- **旧 torch 环境留 1 个不可修的错误**:`gqa.py:109` 的 `enable_gqa` 在 2.2 stub 下报 call-arg,加 ignore 又在 2.12 下被判冗余 —— 无同时满足两代 stub 的写法,运行期已有 try/except 兜底,故只在文档记录、不加注解(声明 canonical env 后 `.venv` 不承担闸门)
+- **日志的量化声明是本轮最大失真源** —— "633 条语料""CI 3 jobs ✅"两条都实测不符;审计的价值不在确认已完成,在于把当年口径与今日现实对齐
+- **落盘先于清扫** —— QuantKB 两周工作未入库期间,`/tmp` 清理已吞过一次面板数据;`.gitignore` 先落再 `git add`,是把"唯一副本在磁盘"转成"可复现资产"的最便宜动作
+
+### 🧭 留到下阶段
+- **用户决策:CI 真实运行通道**(启用 fork Actions + fork 内自 PR,或本地脚本化三闸门作替代)—— 详见上方"下一轮候选"
+- PR #91 上游裁决 / Goinmax-clean 镜像推送 / `audit/risk-overlay-zh` 并回 / laya 离线标注开工(按 4,356 行真实规模排期)
+- 可选:ruff 0.17 迁移(144 处)、QuantKB 2 处 F401、Stage 5 全体待 GPU
 
 ## 2026-11-08 · 夜间自主推进完卷:回归夜 5/5 零回归 + 标题语料积累器上线
 
