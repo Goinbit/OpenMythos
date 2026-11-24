@@ -257,16 +257,16 @@ All work in this project must reference the phase/item below when opening a PR (
 | 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
-**代码侧本地可推进范围内:0 技术债;验证通道侧有 1 项结构性缺口。** 108 个提交领先 upstream `origin/main`(kyegomez),其中除本轮 2 个提交(按"先不推送"仅存本地)外已全部推送 fork(`Goinbit/OpenMythos`);PR #91 自 2026-11-01 开放等上游裁决 —— 但 **CI 三闸门从未对这批工作执行过**(fork 未启用 Actions)。最大交付风险不在代码质量,在"绿"这个字目前只有本机单一环境的证据。
+**代码侧本地可推进范围内:0 技术债;验证通道缺口本轮已补上。** 110 个提交领先 upstream `origin/main`(kyegomez),fork 分支已同步至 `66c40bb`(本轮 docs 提交按"先不推送"仅存本地);PR #91 自 2026-11-01 开放等上游裁决。**CI 三闸门本轮首次真实执行**(fork 内自开 PR #1,4/4 check-run 全绿)——但"从未执行"这个缺口只覆盖本 PR 之前的历史工作,那 100+ 提交仍未有过任何 check-run。最大交付风险已从"绿只有本机证据"降为"绿有第三方环境背书,但历史批次仍未过闸"。
 
 ### 基础设施齐备度
 
 | 项 | 状态 |
 |---|---|
-| **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + **mypy 2.4.1** + **ruff 0.15.8** + pytest —— 三闸门唯一同时可跑且全绿的环境。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
+| **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
 | pytest 守护 | ✅ **301 passed / 0 skipped**(2026-11-24 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试;历史条目中的"310"= 301 + 9)|
 | 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1026** stmts,2026-11-24 重测)—— 超阶段 2 ≥70% 门槛,百分比自 10-24 持平,语句数 +78 |
-| GitHub Actions CI | ⚠️ **配置齐备、从未运行** — 3 jobs(test / lint / typecheck)定义正确,但 fork 的 Actions 未启用(`has_actions=false`),PR #91 的 `check-runs` 为空,上游 workflow 清单只有 Copilot/Dependabot。历史条目里的 ✅ 是"已定义"而非"已通过" |
+| GitHub Actions CI | ✅ **首批真实运行 2026-11-24** — fork 内自开 PR [Goinbit/OpenMythos#1](https://github.com/Goinbit/OpenMythos/pull/1) 4/4 check-run 全绿:pytest(py3.10 + py3.12)各 301 passed / mypy 0 errors 35 files / ruff 全过,与本机对标口径逐字一致。Repo Actions 本就是 `enabled: true`(早前"has_actions=false" 是查询了不存在字段的结果,已纠偏);真实缺口是 fork `main` 上没有 workflow 文件(contents API 404),故首批只对 PR 分支生效。**本 PR 之前的 100+ 历史提交仍无任何 check-run** |
 | mypy 类型检查 | ✅ **0 errors / 35 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
 | ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
 | pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
@@ -276,15 +276,16 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ---
 
-## 最近一轮重点(2026-11-08 → 2026-11-24 · QuantKB 两周工作落盘 + 闸门可复现性)
+## 最近一轮重点(2026-11-08 → 2026-11-24 · QuantKB 两周工作落盘 + 闸门可复现性 + CI 真实执行通道)
 
-### 交付总览 · OpenMythos 1 commit + QuantKB 11 commits
+### 交付总览 · OpenMythos 4 commits + QuantKB 11 commits
 
 | 批次 | Commits | 内容 |
 |---|---|---|
 | ① QuantKB 两周工作入库 | `3707001` … `b17ae70`(11 个,按主题拆分) | `.gitignore` 先落(防 1GB venv / 24MB 生成物误入库)· 中文词典 v1 + laya A/B · RSS 管道 · V3/极端回归/条件变量三连判负实验 · 风控叠加层 v0/v1 · 池级验收 v0 · Gate 0.5 噪声鲁棒 · 死导入清扫 · 11-08 晨报 |
 | ② headline 语料缺陷修复 | `40cff96`(模块首次入库即带修复,buggy 版从未进 git) | 现场日志抓到"73 条标题却归档 58 条新"→ 去重按 pubdate 窗而非全局首见 → 归档 58× 膨胀(252,246 行仅 4,356 唯一标题)· TDD `test_regression_stale_pubdate_not_reappended` · 一次性重建(备份 `.bak-20261124`)· 10:02 launchd 实跑验证 "archived 0 new" |
 | ③ 闸门可复现性 | OpenMythos `7eba113` | buffer 类级注解替代 ignore(mypy 2.4.1 + torch 2.12 下 6 错 → 0)· `run_3b.py` 两处 ignore 恢复(两代 stub 均必要)· CI 精确 pin `ruff==0.15.8` / `mypy==2.4.1` |
+| ④ CI 真实执行通道 | OpenMythos `66c40bb` + fork PR [#1](https://github.com/Goinbit/OpenMythos/pull/1) | 用户选定的路径 A:推送分支 + fork 内自开 PR(base `main` 无 workflow 文件是真实缺口,Repo Actions 早就 enabled)· 首批 4/4 全绿 · **第一次真跑就抓出本地不可见的缺陷**:`numpy<2` 与按 Python 版本分叉的 pyarrow wheel 冲突使 py3.12 腿 collection 挂(3 个 `datasets` 测试模块),py3.10 腿侥幸通过 → 去掉该 pin 后双腿各自解析出与对标环境一致的可复现口径 |
 
 ### 里程碑数字对比
 
@@ -293,8 +294,8 @@ All work in this project must reference the phase/item below when opening a PR (
 | OpenMythos 测试 | 246 | **301** | +55 |
 | 覆盖率 | 97% / 948 stmts | **97% / 1026 stmts** | 百分比持平,基数 +78 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
-| CI | ✅ 3 jobs | **从未运行**(fork Actions 未启用,PR #91 零 check-run) | ⚠️ 声明纠偏 |
-| 未推送提交 | 64(待合入决策) | **0**(fork 已同步;本轮 2 个提交按"先不推送"留本地) | −64 |
+| CI | 从未运行(仅"已定义") | **首批 4/4 check-run 全绿**(fork 内 PR #1,真实 runner 双腿 301 passed + mypy 0/35 + ruff 全过) | 验证通道建立 |
+| 未推送提交 | 64(待合入决策) | **1**(仅本 docs 条目;`66c40bb` 及之前已随 CI 通道推送 fork) | −63 |
 | headline 语料 | "633 条"(膨胀口径,已失真) | **4,356 唯一标题**(2024-03-14 → 2026-11-24,正类 5.1%) | 口径修正 |
 | QuantKB 测试 | 132 passed / 1 skipped | **134 passed / 1 skipped** | +2(去重回归) |
 
@@ -312,16 +313,16 @@ All work in this project must reference the phase/item below when opening a PR (
 10. **`register_buffer` 的属性对静态分析不可见** — 当代 torch stub 把 `Module.__getattr__` 解析成 `Size | Tensor | Module`,于是 buffer 的 `.shape` / 切片直接报 index 错。类级注解(`loop_idx_table: torch.Tensor`)是根因修法:比 ignore 更根本,且不与 `warn_unused_ignores` 冲突
 11. **一个模块内的两种新鲜度语义必须分开实现** — 滚动风控文件按 24h 全量重写(事件衰减),归档 append-only 全局去重(语料积累);把前者的时间窗照搬进后者,会让 feeds 反复回供的旧标题每 10 分钟重复入库,58× 膨胀持续了 13 天才被日志抓到
 12. **日志里的量化声明是待验事实** — "633 条语料""CI 3 jobs ✅"都反映写入当时的口径,本轮两条实测均失真。引用历史数字前先重测,尤其是用来做规划投入的那类(语料规模直接改写了 laya 标注的开工时点)
+13. **真实执行通道的价值 = 抓本地不可见的分叉** — 本机三闸门全绿不等于 CI 矩阵全绿:首轮真跑就抓出 `numpy<2` 与 pyarrow wheel 的按 Python 版本分叉冲突(py3.10 侥幸通过 / py3.12 collection 挂)。同理,"Repo Actions 已启用"要用 `actions/permissions` 查,不能靠仓库对象上的布尔字段(不存在 → 读成 false 造成误判)。对标口径既写工具版本也写 Python 版本腿
 
 ---
 
 ## 下一轮候选(按可行性)
 
 ### 🔴 需用户决策
-- **给 CI 一条真实运行通道**(本轮新暴露的唯一验证缺口)——108 个提交从未过 CI。三条可选路径:
-  1. 在 fork 设置启用 Actions(`Goinbit/OpenMythos` → Actions = allow)后,开 fork 内 PR(`main` ← 当前分支)→ 三闸门即刻真实执行。代价:远程设置改动 + 一个 PR(外发动作)
-  2. 本地把三闸门脚本化(`.venv-arm64/bin/python -m pytest / -m mypy / -m ruff`)当作临时替代 → 零外发,但 PR 合入仍无第三方验证
-  3. 等上游 PR #91 由维护者触发 CI → 取决于对方是否启用,不可控
+- **CI 通道已建立(本轮选 A 执行)** — fork 内 PR [#1](https://github.com/Goinbit/OpenMythos/pull/1) 首批 4/4 全绿。后续两个自然延伸需决策:
+  1. 是否把该通道常态化 —— 最省事的形态是**把 PR #1 合进 fork `main`**:workflow 文件进了 base 分支后,后续任何分支 PR 自动带三闸门,push 到 `main` 也会触发(代价:一次外发合并按钮)
+  2. 历史 100+ 提交是否需要补跑(它们不在本 PR 范围内,Actions 无法对过去补跑;只能在分支上手动 `workflow_dispatch` 取当前 HEAD 的独立证据)
 - **PR #91 合入裁决** — 自 2026-11-01 开放,`state=open / merged=false`,最后活动 2026-11-06,上游无回应
 - **Goinmax-clean 镜像推送**(253 refs,密钥已剥离)· **`audit/risk-overlay-zh` 并回**(等回滚实验收束)—— 均延续前轮
 
@@ -388,6 +389,33 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ## 进度条目(倒序,最新在上)
 
+## 2026-11-24 · CI 真实执行通道建成:fork 内首个 check-run,第一次真跑就抓出本地不可见的缺陷
+
+**分支:** `codex/sync-main-with-origin-20260524` · **commits:** `66c40bb` + 本条目 docs 提交 · **PR:** [Goinbit/OpenMythos #1](https://github.com/Goinbit/OpenMythos/pull/1)(fork 内 `main` ← 当前分支,state=open)
+**Agents:** 无 · **完成 IDs:** 无新 plan ID —— 计划外:补上本日前一条目暴露的"三闸门从未真实执行"验证缺口
+**约束:** 用户选 **A(启用 fork Actions + fork 内自开 PR)** → 该通道的推送/开 PR 属授权范围;其余仓库与分支"先不推送"持续有效(Goinmax-clean 镜像推送仍待用户一句话)✅
+
+### ✅ 完成
+- **⚠️ 前一条目的"fork 未启用 Actions"是我读错字段**:`gh api .../repos/Goinbit/OpenMythos` 上**不存在** `has_actions` 字段,jq 取到 `null` 被当成 `false`。真实状态查 `actions/permissions` → **`enabled: true` / `allowed_actions: all`,一直开着**。阻塞点根本不在设置:fork `main` 的 `/.github/workflows` contents API **404**(workflow 文件只存在于我这条分支上),而 PR 的 checks 取 base 分支的 workflow 清单 → 无论 Actions 开不开都不会跑
+- **打通(零设置改动)**:分支头推送到 fork(`1a356d3..66c40bb`)+ 在 fork 内自开 PR #1 → 三闸门首次真实执行,`check-runs` 从空变为 4 条
+- **首跑 3/4:py3.12 测试腿 exit 2(collection 阶段)**`ImportError: pyarrow requires NumPy 2.0 or newer, found 1.26.4` → 三个 `import datasets` 的测试模块集体挂掉。根因 = 我为"对齐旧环境"加的 **`numpy<2` pin 撞上 pyarrow wheel 分叉**:py3.10 解析到 pyarrow 25.0.1(容忍 numpy 1.x)侥幸通过,py3.12 解析到 26.0.1(要求 numpy ≥2)必挂。**本地永远看不到这个分歧**——canonical `.venv-arm64` 只有一个 Python 腿(3.12)且装 numpy 2.4.6 + pyarrow 24.0.0
+- **修复(`66c40bb`)**:test / typecheck 两个 job 都去掉 `numpy<2`,让 pip 自行解析,并把上述因果写进 `ci.yml` 注释(下次有人想加 pin 能看见原因)。结果 = **4/4 全绿**(run `45331001119`):`pytest (py3.10)` **301 passed** · `pytest (py3.12)` **301 passed** · `mypy` **0 errors / 35 files** · `ruff check` **All checks passed** —— 与本机对标口径逐字一致,双腿各自解析出与 `.venv-arm64` 相同的可复现栈
+- **闸门环境行补记 numpy/pyarrow/datasets/transformers 版本 + "CI 依赖解析对标口径"**;"GitHub Actions CI"状态行、里程碑对比表、交付总览 ④ 行同步改为"首批真实运行已完成",并写明**该缺口只覆盖本 PR 之前的 100+ 历史提交**(它们仍无 check-run,Actions 无法对过去补跑)
+
+### 📊 测试变化
+- 无代码变更(仅 CI 配置与文档);本机 301 passed 不变
+- 新增:**外部执行证据** ×4 check-run(首次),以及 1 个由 CI 抓出的真实缺陷修复
+
+### 🔑 关键决策 / 发现
+- **"跑过"与"定义过"的分界必须靠第三方执行环境验证** —— 本地 301 绿了两个月,`numpy<2` 这个 pin 依然会在 CI 上杀死一半的腿;跨 Python 版本的 wheel 分叉只在矩阵 runner 上可见,本机单腿天然不可见
+- **仓库能力声明要用正确的 API 面查** —— `actions/permissions` 才是 Actions 的开关来源;凭仓库对象上不存在的布尔字段判"未启用",差点把整轮方案导向"改远程设置"这个无谓的外发动作
+- **对标口径要写版本也写腿** —— 前一条已钉住工具版本,本轮补上 Python 腿:同一份 requirements 在 3.10/3.12 会解析出不同的 pyarrow,结论随腿变
+
+### 🧭 留到下阶段
+- **用户决策:CI 通道常态化** —— PR #1 合入 fork `main` 后 workflow 文件才进 base 分支,后续分支 PR 自动带 checks(外发动作,待授权);可选替代:每次对分支手动 `workflow_dispatch`
+- 历史 100+ 提交无法补跑 CI(如需,可在分支上手动触发一次以取当前 HEAD 的独立证据)
+- PR #91 上游裁决 / Goinmax-clean 镜像推送 / `audit/risk-overlay-zh` 并回 / laya 标注开工 —— 均不变
+
 ## 2026-11-24 · 进度实测:QuantKB 两周工作入库、语料膨胀缺陷修复、闸门可复现性纠偏
 
 **分支:** OpenMythos `codex/sync-main-with-origin-20260524`(commit `7eba113` + 本条目 docs 提交)· QuantKB `main`(`3707001`…`b17ae70`,11 commits)
@@ -397,6 +425,7 @@ All work in this project must reference the phase/item below when opening a PR (
 ### ✅ 完成
 - **进度核对(文档 vs 实测)**:OpenMythos 测试 **301 passed**(文档快照记 246)· 覆盖率 **97% / 1026 stmts**(948)· `config.py` 360 行(快照 314)· `train_small_lm.py` 746 行(快照 533)· fork 分支已同步,测量时领先 upstream `main` 106 commits(本轮 2 个提交后为 108,均留本地未推),PR #91 仍 open
 - **⚠️ CI 从未执行这批工作**:`gh api .../commits/<head>/check-runs` 空、`gh run list --repo Goinbit/OpenMythos` 为 `[]`、fork `has_actions=false`、上游 workflow 清单只有 Copilot/Dependabot —— 快照里的 "GitHub Actions CI ✅ 3 jobs" 一直是"已定义"而非"已通过",已纠偏
+  *(同日更正:"未执行"当天即被打通,见本日志顶部新条目;该行的 `has_actions=false` 判定本身有误——该字段不存在,真实原因见新条目)*
 - **headline 归档膨胀缺陷(TDD)**:11-08 上线的积累器把滚动风控文件的 24h 窗口语义误用为去重窗口,feeds 反复回供的旧标题每轮重新入库 —— 现场日志"73 条标题 / archived 58 new"暴露,实测 442 个标题重复 >100 次(最坏 1,843 次 ≈ 144 轮/天 × 13 天)。`append_headline_archive` 去重口径改为**全局首见**(pubdate 只作时间戳),`tools/rss_event_stream.py:67` 调用点同步;新增 `test_regression_stale_pubdate_not_reappended` 钉死;归档一次性重建 252,246 → **4,356 行**(零重复、时序完整,备份 `.bak-20261124`);10:02 launchd 实跑验证输出 "archived 0 new"
 - **语料真实规模(改写 laya 标注规划前提)**:4,356 唯一标题 / 正类 5.1% ≈ 222 条,新增 ~240 条/天 → 攒 500 正类样本需 ~40 天,而非 11-08 条目按"633 条"口径推的时点
 - **QuantKB 两周工作全部入库(11 commits,按主题拆分)**:`.gitignore` 先行落盘(1.0GB `.venv` + 24MB 生成数据 + 工具缓存),此后任何 `git add -A` 不可能误收;内容覆盖中文词典 v1、RSS 管道、三连锁死的判负实验、风控叠加层 v0/v1、池级验收 v0、Gate 0.5 噪声鲁棒、11-08 晨报
