@@ -264,16 +264,16 @@ All work in this project must reference the phase/item below when opening a PR (
 | 项 | 状态 |
 |---|---|
 | **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
-| pytest 守护 | ✅ **384 passed / 0 skipped**(PR #19 口径)· 警告计数 **3**:2 条 LoRA 外推 + README Usage 块正常触发的 P1.3 warning,**不是回归** |
-| 文档契约(tests/test_readme_claims.py) | ✅ **README 已进入契约测,但覆盖有盲点**:10 项覆盖相对链接、preset 双向、Usage 真执行、训练入口/并行/精度与 warmup/token/subset;首轮判负 6 条假声明并修正。**未覆盖** PyPI badge/AdamW/数据集/调度/preset 表数字与 FlashAttention 2 声明;GradScaler 检查只禁一个精确短语,实测改成 "Uses GradScaler" 仍通过 |
+| pytest 守护 | ✅ **391 passed / 0 skipped**(PR #20 口径)· 警告计数 **3**:2 条 LoRA 外推 + README Usage 块正常触发的 P1.3 warning,**不是回归** |
+| 文档契约(tests/test_readme_claims.py) | ✅ **README 16 项契约 + 镜像一致性**:覆盖相对链接、preset 双向与表格逐 cell、Usage 真执行、训练入口/并行/精度、warmup/token/subset、badge 包名、AdamW、数据集、tokenizer、调度;删除未实现的 FlashAttention 2 声明, GradScaler 反向声明加固。AGENTS/CLAUDE 规范化镜像由 `tests/test_instruction_mirror.py` 精确断言 |
 | 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1106** stmts / 37 miss,2026-11-27 实测;`model.py` 99%、`kv_cache.py` 95%)—— 超阶段 2 ≥70% 门槛,但行覆盖率不等于危险分支覆盖 |
-| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **18 条全绿**(实测于 `b7cae72`),最新 run [`45873121873`](https://github.com/Goinbit/OpenMythos/actions/runs/45873121873) 5/5、双腿 382 passed。PR #19 代码 run [`45873742577`](https://github.com/Goinbit/OpenMythos/actions/runs/45873742577) 5/5、双腿 384 passed,recurrent artifact 已上传。PR #1 之前历史提交仍无 check-run |
+| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **19 条全绿**(实测于 `6ab66ca`),最新 run [`45874496343`](https://github.com/Goinbit/OpenMythos/actions/runs/45874496343) 5/5、双腿 384 passed。PR #20 代码 run [`45875368515`](https://github.com/Goinbit/OpenMythos/actions/runs/45875368515) 5/5、双腿 391 passed。PR #1 之前历史提交仍无 check-run |
 | 性能证据(benchmarks/) | ✅ **有 CPU 读数,无 GPU 验收**:已下载 28 份 artifact(21 `AVX512` + 6 `AVX2` + 1 无 `cpu`),SDPA **1.223–2.125×**(15/28 ≥1.5),MoE **2.484–3.368×**(12/28 ≥3)。P3.2 grouped GEMM 最新本机 arm64 **3.493×**、CI `AVX2` **2.511×**,等价差 ~1e-7。实际为 seq256/bsz1/head8 CPU 微基准,不能证明规定 seq2048/bsz4/head16、显存或 3B GPU 门槛;判据只能按同坐标多次 run 分布 |
 | mypy 类型检查 | ✅ **0 errors / 35 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
 | ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
 | pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
 | Stop hook 日志强制 | ✅ `.claude/hooks/check_claude_md_updated.sh` |
-| Silent-failure-hunter 残余 | 🔴 **审计发现未闭环**:fp16 梯度下溢无 scaler;README FlashAttention 2 假声明与闸门盲点。NaN/Inf loss/梯度、held-out/all-rank eval、P3.2 专家循环/主机同步已修;真实 NCCL/FSDP 仍待 GPU |
+| Silent-failure-hunter 残余 | 🔴 **审计发现未闭环**:fp16 梯度下溢无 scaler;真实 NCCL/FSDP 与 GPU 门槛未验。NaN/Inf loss/梯度、held-out/all-rank eval、P3.2 专家循环、P3.3 cache 预分配、Flash 假声明与文档闸盲点已修 |
 | 文件大小(400 行) | ✅ `open_mythos/` 核心模块满足(最大 `config.py` **360** 行;`model.py` 250、`kv_cache.py` 115、`expert.py` 134、`moe.py` 259)· `run_3b.py` 60 行保持 · `benchmarks/gate_bench.py` 343、`recurrent_bench.py` 230 行 · tests/examples 有已知例外(`tests/test_main.py` **2212** · `experimental/moda.py` 1021 · `train_small_lm.py` 746 等) |
 
 ---
@@ -288,9 +288,10 @@ All work in this project must reference the phase/item below when opening a PR (
 - P3.2 grouped MoE:`22cbfb3` → PR [#16](https://github.com/Goinbit/OpenMythos/pull/16),已合入 `5088f1f`;PR run `45866066762` / `45867040001` 与 trunk run `45867271903` 均 5/5,trunk 双腿 373 passed。
 - P3.3 static cache:`842e797` → PR [#17](https://github.com/Goinbit/OpenMythos/pull/17),已合入 `e1384be`;PR run `45870544145` / `45871249054` 与 trunk run `45871477344` 均 5/5,trunk 双腿 377 passed。
 - P3.5 ACT sync:`82e783d` → PR [#18](https://github.com/Goinbit/OpenMythos/pull/18),已合入 `b7cae72`;PR run `45872280046` / `45872863443` 与 trunk run `45873121873` 均 5/5,trunk 双腿 382 passed。
-- P3.7 loop embedding:`fa1ed48` → PR [#19](https://github.com/Goinbit/OpenMythos/pull/19),代码 run [`45873742577`](https://github.com/Goinbit/OpenMythos/actions/runs/45873742577) 5/5、双腿 384 passed;本机 7.167×、CI AVX512 5.818×,max diff 0。
-- 测试:350 → **384 passed**;覆盖率 **97% / 1106 stmts**;mypy 0/35;ruff 全过。
-- 审计:撤销 Stage 3/4“全部完成”和“0 技术债”口径;下一优先级 = 文档闸(Flash 假声明/README 数字/镜像一致性);GPU 与 fp16 scaler 仍待硬件。
+- P3.7 loop embedding:`fa1ed48` → PR [#19](https://github.com/Goinbit/OpenMythos/pull/19),已合入 `6ab66ca`;PR run `45873742577` / `45874246546` 与 trunk run `45874496343` 均 5/5,trunk 双腿 384 passed。
+- 文档闸:`1a69f43` → PR [#20](https://github.com/Goinbit/OpenMythos/pull/20),代码 run [`45875368515`](https://github.com/Goinbit/OpenMythos/actions/runs/45875368515) 5/5、双腿 391 passed;删除 FlashAttention 2 假声明,README 16 项 + 镜像一致性。
+- 测试:350 → **391 passed**;覆盖率 **97% / 1106 stmts**;mypy 0/35;ruff 全过。
+- 审计:撤销 Stage 3/4“全部完成”和“0 技术债”口径;本地高价值文档闸已收口,下一批补 P0.1/P0.3 指定回归或 runbook 契约;GPU 与 fp16 scaler 仍待硬件。
 
 ### 历史交付总览 · OpenMythos 22 commits(实测于 `f731717`,口径 = `git log --no-merges --since=2026-11-08 --pretty=%h fork/main | wc -l`,不含 merge commit)+ QuantKB 11 commits
 
@@ -313,7 +314,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 | 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| OpenMythos 测试 | 246 | **384**(2026-11-27) | +138 |
+| OpenMythos 测试 | 246 | **391**(2026-11-27) | +145 |
 | 覆盖率 | 97% / 948 stmts | **97% / 1106 stmts / 37 miss** | 百分比持平,基数 +158 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
 | CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条全绿 main run(核对口径 `gh run list --branch main --event push`;已核 10 条,前 6 条 4/4、后 4 条 5/5;双腿同 `torch 2.12.0+cpu`,判定同为「全 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`」,passed 计数随合入前进(301 → 320 → 340 → 350,不在文档里钉死),自 `b8a604c` 起再加 benchmark artifact;该 artifact 八条 payload 实测跨 `AVX512`/`AVX2` 两个能力类,类内摆动 6.2%–17.4%、类间区间重叠且排序也不稳定** | 验证通道建立、持续、可复现且自证 |
@@ -352,6 +353,7 @@ All work in this project must reference the phase/item below when opening a PR (
 25. **静态 cache 的“预分配”必须发生在首 forward 之前,而不是首次写入时** —— P3.3 旧实现虽在首次写入分配满长 buffer,但 decode 首轮仍有隐式分配。现在 `generate()` 在进入循环前按 GQA/MLA 的 Prelude、每个 recurrent loop、Coda key 一次性分配;外部手动 cache 仍保留 lazy API。验收用 512 次写入后分配计数 0、buffer id 不变、static/dict greedy decode 逐 token 一致来证明,而不是只看类名。
 26. **ACT 同步验收与计时验收必须分开报告** —— P3.5 用 TorchDispatchMode 直接数 `aten.all` / `_local_scalar_dense`,RecurrentBlock 与 full generate 均为 0,严格满足 `≤max_loop_iters/4`。但固定循环计时在本机 CPU 约 1.0×、CI 1.019–1.026×,不能证明 −15%;该门槛需要 GPU 同步成本证据。把“0 sync”写成“性能已完成”是另一种静默夸大。
 27. **loop embedding 预计算必须同时证明数值与分配路径** —— P3.7 的 table 不是只存一份常量就完事:测试逐行对照动态 `loop_index_embedding`,benchmark 比较同输入动态计算 vs table 索引,源码断言 forward 不再出现 `loop_index_embedding`/`torch.cat`/`torch.arange`。本机 7.167×、CI AVX512 5.818×,max diff 0;三方证据共同证明“既等价又不在 forward 临时构造”。
+28. **文档闸要覆盖“数字/机制/镜像”三类不同谎言** —— README 契约扩展到 preset 表逐 cell、AdamW/数据集/tokenizer/调度对源、FlashAttention 2 与 GradScaler 反向声明;AGENTS/CLAUDE 则用规范化 round-trip 精确比较。文本检索只能证明字符串存在,配置对源与镜像等式才能证明声明仍与实现同步。
 
 ---
 
@@ -384,8 +386,8 @@ All work in this project must reference the phase/item below when opening a PR (
 - **ruff 升版迁移(0.15.8 → 0.17+)** — 144 处风格项:`I001` 35 / `UP045` 26 / `PLR0402` 16 / `UP006` 16 / `RUF022` 8 / `RUF059` 8,其余零散;115 处 `--fix` 可自动。当前用精确 pin 规避,真要升版则先扫这批
 - **QuantKB `freqtrade_strategies/` 2 处预存 F401** — `talib.abstract` 未用导入(`QuantkbMomentum_Divergence.py:8` / `QuantkbRange_Position.py:8`),与本轮工作无关故未动
 - **docs/ mkdocs 渲染**:`docs/` 有 md 未渲染
-- **README 内部声明已闸(本批次)/ 外部引用面仍未审** — 版本同步、preset 名、训练入口、并行与精度表述、Usage 代码块执行、`variants.py` 全覆盖现由 `tests/test_readme_claims.py` 10 项判定;"README 里的**外链**(PyPI / arXiv / 博客 / `goinmax` 那个占位链接)是否可达"仍没有任何自动化,因为要先定语义:一次 HTTP 抖动算不算失败、404 与 403/429 是否同类、CI 里要不要重试。**未定语义就上线会造成随机红灯**,所以刻意留白(低价值,但顺手可做)
-- **文档闸的覆盖面目前只有 README** — 同一手法可扩展到 `docs/runbooks/*.md`(命令是否真能跑)与 `docs/model_cards/*.md`(SHA / val loss 是否还能对上),但这两类的判定语义比 README 更重(runbook 命令含 MPS/联网前提),要先决定"可执行子集"怎么标;本批次按外科原则只做 README,理由记在决策 21
+- **README 内部声明已闸 / 外部引用面仍未审** — `tests/test_readme_claims.py` 16 项覆盖 preset 表、训练配置、Usage 执行等;外链可达性(PyPI/arXiv/博客)仍需先定重试与 404/403/429 语义,未定语义不上线以免随机红灯。
+- **文档闸已覆盖 README 与 AGENTS/CLAUDE 镜像** — `docs/runbooks/*.md` 与 `docs/model_cards/*.md` 的可执行子集仍未定义;runbook 含 MPS/联网前提,模型卡 SHA/val loss 需要额外语义,暂不机械扩展。
 - **`tests/test_main.py` 拆分**(1941 行)/ `test_regression_*` 命名规范落地 — 低优先级,可选
 
 ### 🟡 未入 plan 但可考虑
@@ -440,6 +442,32 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-27 · 文档闸硬化:Flash 假声明删除,README 16 项 + 镜像一致性
+
+**分支:** OpenMythos `docs/contract-gate-hardening`(自 fork `main` `6ab66ca` 起)· **commits:** `1a69f43` + 本条目 docs 提交 → PR [#20](https://github.com/Goinbit/OpenMythos/pull/20);代码 run [`45875368515`](https://github.com/Goinbit/OpenMythos/actions/runs/45875368515) **5/5 success**,双腿 391 passed
+**Agents:** 无 · **完成 IDs:** 无新 plan ID —— 审计候选“文档闸”
+**约束执行:** 只动 fork 短分支与 fork 内 PR;上游 PR #91 head 仍 `66c40bb`;未 squash、未删 head 分支。
+
+### ✅ 完成
+- [README.md:43](file:///Users/macos/Desktop/Claude/OpenMythos/README.md#L43) 删除“安装 `open-mythos[flash]` 启用 FlashAttention 2”的假声明,准确说明 SDPA 可在支持设备上派发融合 kernel;attention 表与部署表同步修正。
+- [tests/test_readme_claims.py:63-105](file:///Users/macos/Desktop/Claude/OpenMythos/tests/test_readme_claims.py#L63-L105) preset 表逐 cell 对 `variants.py`;context/output 使用 1024 进制,`131072` 正确显示为 `128k`。
+- [tests/test_readme_claims.py:110-143](file:///Users/macos/Desktop/Claude/OpenMythos/tests/test_readme_claims.py#L110-L143) 新增 badge 包名、AdamW、数据集、tokenizer、调度、Flash 机制对源;GradScaler 检查改为同时要求“无 scaler”时 README 明示无动态 scaling。
+- [tests/test_instruction_mirror.py:37-41](file:///Users/macos/Desktop/Claude/OpenMythos/tests/test_instruction_mirror.py#L37-L41) 新增 AGENTS/CLAUDE 规范化双向精确比较,历史 `AGENTS.md/CLAUDE.md` 成对名称用占位符保护。
+
+### 📊 测试变化
+- before:384 passed / 0 skipped / 3 warnings → after:**391 passed / 0 skipped / 3 warnings**(+7)
+- README 契约 10 → **16 项**,新增镜像测试 1 项;覆盖率维持 **97% / 1106 stmts**;mypy **0 errors / 35 files**;ruff 全过
+- 通道内证据:PR #20 代码 run `45875368515` **5/5**,pytest 双腿、mypy、ruff、advisory benchmark 全 success
+
+### 🔑 关键决策 / 发现
+- **Flash 声明是机制谎言,不是措辞问题**:代码只有 SDPA,安装 extra 不会启用独立 FlashAttention 2 路径;测试直接扫 attention 源码并禁 README 声称。
+- **preset 表单位必须固定进制**:131072 是 128k,不是 131k;校验器与 README 都按 1024 进制,避免“看起来合理”的假数字。
+- **镜像测试要保护成对文件名**:盲目替换会把历史 `AGENTS.md/CLAUDE.md` 塌成 `CLAUDE.md/CLAUDE.md`;占位符 round-trip 既允许 harness 差异,又要求其余内容逐字一致。
+
+### 🧭 留到下阶段
+- 补 P0.1/P0.3 指定回归(公共 star import、全零 topk),关闭审计剩余验收缺口。
+- runbook/model card 可执行子集仍需定义语义;GPU、fp16 scaler、NCCL/FSDP 仍待硬件。
 
 ## 2026-11-27 · P3.7 loop embedding 预计算:数值等价 + 分配路径 + 加速比
 
