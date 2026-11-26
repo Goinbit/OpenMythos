@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -93,7 +93,8 @@ class RecurrentBlock(nn.Module):
         mask: Optional[torch.Tensor] = None,
         n_loops: Optional[int] = None,
         kv_cache: Optional[Union[dict, StaticKVCache]] = None,
-    ) -> torch.Tensor:
+        return_balance_loss: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Run the recurrent loop for up to n_loops iterations with ACT early exit.
 
@@ -106,9 +107,11 @@ class RecurrentBlock(nn.Module):
                         Can be increased at inference for deeper reasoning (depth extrapolation).
             kv_cache -- cache dict passed through to the inner TransformerBlock;
                         each loop iteration uses a separate cache key
+            return_balance_loss -- opt in to returning the sum of per-loop MoE
+                                   balance losses
 
         Returns:
-            ACT-weighted sum of hidden states across iterations, shape (B, T, dim)
+            ACT-weighted hidden states, or ``(hidden_states, balance_loss)``.
         """
         n_loops = n_loops or self.cfg.max_loop_iters
         B, T, D = h.shape
@@ -116,6 +119,7 @@ class RecurrentBlock(nn.Module):
         halted = torch.zeros(B, T, device=h.device, dtype=torch.bool)
         cumulative_p = torch.zeros(B, T, device=h.device)
         h_out = torch.zeros_like(h)
+        balance_loss = torch.zeros((), device=h.device, dtype=h.dtype)
 
         for t in range(n_loops):
             # P3.7: use precomputed loop-index table. If depth extrapolates past
@@ -130,7 +134,18 @@ class RecurrentBlock(nn.Module):
             )
             combined = self.norm(h_loop + e)
             cache_key = f"recurrent_loop_{t}"
-            trans_out = self.block(combined, freqs_cis, mask, kv_cache, cache_key)
+            if return_balance_loss:
+                trans_out, loop_balance = self.block(
+                    combined,
+                    freqs_cis,
+                    mask,
+                    kv_cache,
+                    cache_key,
+                    return_balance_loss=True,
+                )
+                balance_loss = balance_loss + loop_balance
+            else:
+                trans_out = self.block(combined, freqs_cis, mask, kv_cache, cache_key)
             trans_out = trans_out + self.lora(trans_out, t)
             trans_out = torch.where(running_mask, trans_out, torch.zeros_like(trans_out))
             h = torch.where(running_mask, self.injection(h, e, trans_out), h)
@@ -159,4 +174,6 @@ class RecurrentBlock(nn.Module):
             # positions retain frozen hidden/cache context and their later
             # Transformer/LoRA/LTI/ACT outputs are gated out above.
 
+        if return_balance_loss:
+            return h_out, balance_loss
         return h_out
