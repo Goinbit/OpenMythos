@@ -290,6 +290,107 @@ class TestTrainerNonfiniteGuard:
 
 
 # ---------------------------------------------------------------------------
+# Held-out validation + distributed eval (P4.5)
+# ---------------------------------------------------------------------------
+
+
+class _FakeStreamingDataset:
+    def __init__(self, samples):
+        self.samples = samples
+
+    def shard(self, num_shards: int, index: int):
+        return [sample for i, sample in enumerate(self.samples) if i % num_shards == index]
+
+
+class TestHeldoutEval:
+    def test_document_hash_partition_is_stable_and_bounded(self):
+        from training.data import _is_validation_document
+
+        sample = {"id": "stable-document-id", "text": "ignored"}
+        assert _is_validation_document(sample, 0.01) == _is_validation_document(sample, 0.01)
+        assert not _is_validation_document(sample, 0.0)
+        assert _is_validation_document(sample, 1.0)
+
+    def test_train_and_validation_documents_are_disjoint(self, monkeypatch):
+        import training.data as data_module
+
+        samples = [
+            {"id": "train-a", "text": "aaaa"},
+            {"id": "val-a", "text": "bbbb"},
+            {"id": "train-b", "text": "cccc"},
+            {"id": "val-b", "text": "dddd"},
+        ]
+        monkeypatch.setattr(data_module, "load_dataset", lambda *args, **kwargs: _FakeStreamingDataset(samples))
+        monkeypatch.setattr(
+            data_module,
+            "_is_validation_document",
+            lambda sample, fraction: sample["id"].startswith("val-"),
+        )
+        class _Encoding:
+            @staticmethod
+            def encode(text):
+                return [ord(char) for char in text]
+
+        train = data_module.FineWebEduDataset(_Encoding(), 3, "sample-10BT", 0, 1, split="train")
+        validation = data_module.FineWebEduDataset(_Encoding(), 3, "sample-10BT", 0, 1, split="validation")
+
+        train_tokens = [pair[0].tolist() for pair in train]
+        validation_tokens = [pair[0].tolist() for pair in validation]
+        assert train_tokens == [[97, 97, 97], [99, 99, 99]]
+        assert validation_tokens == [[98, 98, 98], [100, 100, 100]]
+        assert {tuple(tokens) for tokens in train_tokens}.isdisjoint(
+            tuple(tokens) for tokens in validation_tokens
+        )
+
+    def test_validation_loader_marks_dataset_as_heldout(self):
+        from training.eval import build_validation_loader
+
+        loader = build_validation_loader(lambda text: [], 0, 1, 16, num_workers=0)
+        assert loader.dataset.split == "validation"
+
+    def test_distributed_eval_reduces_loss_and_count(self, monkeypatch):
+        import training.eval as eval_module
+
+        class _EvalModel(torch.nn.Module):
+            def forward(self, input_ids):
+                batch, length = input_ids.shape
+                return torch.zeros(batch, length, 4)
+
+        model = _EvalModel().train()
+        loader = [(torch.zeros(1, 2, dtype=torch.long), torch.zeros(1, 2, dtype=torch.long))]
+        reduce_calls = 0
+
+        def fake_all_reduce(tensor, op):
+            nonlocal reduce_calls
+            reduce_calls += 1
+            assert op == eval_module.dist.ReduceOp.SUM
+            tensor[0] = 6.0
+            tensor[1] = 2.0
+
+        monkeypatch.setattr(eval_module.dist, "all_reduce", fake_all_reduce)
+        loss = eval_module.compute_val_loss(model, loader, "cpu", 4, num_batches=1, ddp=True)
+        assert loss == pytest.approx(3.0)
+        assert reduce_calls == 1
+        assert model.training
+
+    def test_nonmaster_rank_still_participates_in_scheduled_eval(self, monkeypatch):
+        import training.eval as eval_module
+
+        calls = 0
+
+        def fake_compute(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return 1.25
+
+        monkeypatch.setattr(eval_module, "compute_val_loss", fake_compute)
+        trainer = type("TrainerStub", (), {"model": object(), "master": False, "ddp": True})()
+        hook = eval_module.PeriodicEvalHook(10, [], "cpu", 4)
+        hook(10, trainer)
+        assert calls == 1
+
+
+# ---------------------------------------------------------------------------
 # LR schedule: warmup then cosine decay to min_lr
 # ---------------------------------------------------------------------------
 
