@@ -1575,10 +1575,38 @@ class TestRoPEDtypePreservation:
 
 
 class TestRecurrentNoEarlyExit:
+    def test_recurrent_forward_has_no_host_sync(self):
+        from torch.utils._python_dispatch import TorchDispatchMode
+
+        torch.manual_seed(0)
+        cfg = gqa_cfg(max_loop_iters=4, act_threshold=0.01)
+        rb = RecurrentBlock(cfg).eval()
+        freqs = precompute_rope_freqs(
+            cfg.dim // cfg.n_heads, cfg.max_seq_len, cfg.rope_theta
+        )
+        h = torch.randn(1, 4, cfg.dim)
+        e = torch.randn(1, 4, cfg.dim)
+
+        class _SyncCounter(TorchDispatchMode):
+            def __init__(self):
+                self.calls = 0
+
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                if func in (
+                    torch.ops.aten._local_scalar_dense.default,
+                    torch.ops.aten.all.default,
+                ):
+                    self.calls += 1
+                return func(*args, **kwargs)
+
+        with _SyncCounter() as counter:
+            rb(h, e, freqs[:4], mask=None, n_loops=4, kv_cache=None)
+        assert counter.calls == 0
+
     def test_recurrent_runs_all_loops_when_no_cache(self):
         """After P3.5, the loop runs n_loops iterations regardless of halting."""
         torch.manual_seed(0)
-        cfg = gqa_cfg(act_threshold=0.01)  # trivial threshold; halts immediately
+        cfg = gqa_cfg(max_loop_iters=4, act_threshold=0.01)  # halts immediately
         rb = RecurrentBlock(cfg).eval()
         freqs = precompute_rope_freqs(
             cfg.dim // cfg.n_heads, cfg.max_seq_len, cfg.rope_theta
