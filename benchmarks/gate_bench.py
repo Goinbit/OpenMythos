@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 import torch
+import torch.nn.functional as F
 
 from open_mythos.main import (
     GQAttention,
@@ -200,13 +201,19 @@ def _loop_moe(moe: MoEFFN, x: torch.Tensor) -> torch.Tensor:
     _, topk_idx = (logits + moe.router.router_bias).topk(moe.topk, dim=-1)
     topk_scores = scores.gather(-1, topk_idx)
     topk_scores = topk_scores / topk_scores.sum(-1, keepdim=True).clamp(min=1e-9)
+    experts = moe.routed_experts
+    gate_weight = experts._effective_weight(experts.gate_weight)
+    up_weight = experts._effective_weight(experts.up_weight)
+    down_weight = experts._effective_weight(experts.down_weight)
     out = torch.zeros_like(flat)
     for n in range(flat.shape[0]):
         for slot in range(moe.topk):
             eid = topk_idx[n, slot].item()
-            out[n] = out[n] + topk_scores[n, slot] * moe.routed_experts[eid](
-                flat[n : n + 1]
-            ).squeeze(0)
+            hidden = F.silu(F.linear(flat[n : n + 1], gate_weight[eid])) * F.linear(
+                flat[n : n + 1], up_weight[eid]
+            )
+            expert_out = F.linear(hidden, down_weight[eid]).squeeze(0)
+            out[n] = out[n] + topk_scores[n, slot] * expert_out
     for shared in moe.shared_experts:
         out = out + shared(flat)
     return out.view(b, t, d)

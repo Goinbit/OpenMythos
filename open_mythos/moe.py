@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from open_mythos.config import MythosConfig
-from open_mythos.primitives.expert import Expert
+from open_mythos.primitives.expert import Expert, GroupedExperts
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +151,8 @@ class MoEFFN(nn.Module):
         # router.linear.weight / router.router_bias (documented break).
         self.router = build_router(cfg)
 
-        self.routed_experts = nn.ModuleList(
-            [Expert(cfg.dim, cfg.expert_dim, cfg=cfg) for _ in range(cfg.n_experts)]
+        self.routed_experts = GroupedExperts(
+            cfg.dim, cfg.expert_dim, cfg.n_experts, cfg=cfg
         )
         self.shared_experts = nn.ModuleList(
             [
@@ -186,33 +186,28 @@ class MoEFFN(nn.Module):
         # Stage 4.3: delegate routing to the Router Protocol instance.
         topk_idx, topk_scores, scores = self.router(flat)
 
-        # P3.2: vectorized routed-expert dispatch.
-        # Flatten the (token, k_slot) pairs so every top-K assignment is one
-        # entry in three parallel tensors. One expert at a time, we gather all
-        # of its tokens in a single matmul instead of iterating per k-slot.
+        # P3.2: sort token-slot assignments by expert, then evaluate every
+        # expert in one jagged grouped GEMM. Counts/offsets never leave device.
         N = flat.shape[0]
         K = self.topk
-        flat_idx = topk_idx.reshape(-1)          # (N*K,)  expert id per assignment
-        flat_weights = topk_scores.reshape(-1)   # (N*K,)  router weight per assignment
+        flat_idx = topk_idx.reshape(-1)
+        flat_weights = topk_scores.reshape(-1)
         flat_tokens = (
             torch.arange(N, device=flat.device)
             .unsqueeze(1)
             .expand(-1, K)
             .reshape(-1)
-        )  # (N*K,)  token index per assignment
-
-        out = torch.zeros_like(flat)
-        # One sync to read bincount into Python — amortized across all experts,
-        # far cheaper than per-expert .any() checks inside the inner loop.
-        counts = torch.bincount(flat_idx, minlength=self.n_experts).tolist()
-        for eid in range(self.n_experts):
-            if counts[eid] == 0:
-                continue
-            mask = flat_idx == eid
-            token_selector = flat_tokens[mask]          # (M,)
-            weights = flat_weights[mask].unsqueeze(-1)  # (M, 1)
-            expert_out = self.routed_experts[eid](flat[token_selector])  # (M, D)
-            out.index_add_(0, token_selector, expert_out * weights)
+        )
+        order = torch.argsort(flat_idx)
+        sorted_idx = flat_idx[order]
+        sorted_x = flat[flat_tokens[order]]
+        sorted_weights = flat_weights[order]
+        sorted_tokens = flat_tokens[order]
+        counts = torch.bincount(sorted_idx, minlength=self.n_experts)
+        offsets = counts.cumsum(dim=0).to(torch.int32)
+        out = self.routed_experts(
+            sorted_x, offsets, sorted_weights, sorted_tokens, N
+        )
 
         # shared experts always fire for every token
         for shared in self.shared_experts:
