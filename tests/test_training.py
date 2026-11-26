@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, IterableDataset
 
 from open_mythos.main import MythosConfig, OpenMythos
 
@@ -145,6 +146,78 @@ class TestCheckpointRoundtrip:
             assert torch.equal(src_state[name], dst_state[name]), (
                 f"buffer mismatch after roundtrip: {name}"
             )
+
+    def test_production_checkpoint_roundtrip_and_resume(self, tmp_path):
+        from training.checkpoint import load_checkpoint, save_checkpoint
+
+        torch.manual_seed(42)
+        cfg = tiny_cfg()
+        src = OpenMythos(cfg)
+        src_optimizer = torch.optim.AdamW(src.parameters(), lr=1e-3)
+        input_ids = torch.randint(0, cfg.vocab_size, (2, 8))
+        targets = torch.randint(0, cfg.vocab_size, (2, 8))
+
+        def step(model, optimizer):
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(input_ids)
+            loss = F.cross_entropy(
+                logits.reshape(-1, cfg.vocab_size), targets.reshape(-1)
+            )
+            loss.backward()
+            optimizer.step()
+            return loss.detach()
+
+        step(src, src_optimizer)
+        save_checkpoint(
+            src,
+            src_optimizer,
+            step=1,
+            cfg=cfg,
+            vocab_size=cfg.vocab_size,
+            ckpt_dir=str(tmp_path),
+            ddp=False,
+            master=True,
+        )
+        checkpoint = tmp_path / "step_0000001.pt"
+        assert checkpoint.exists()
+
+        torch.manual_seed(7)
+        dst = OpenMythos(cfg)
+        dst_optimizer = torch.optim.AdamW(dst.parameters(), lr=1e-3)
+        restored_step = load_checkpoint(
+            dst, dst_optimizer, str(checkpoint), ddp=False, cfg=cfg
+        )
+        assert restored_step == 1
+
+        for name, tensor in src.state_dict().items():
+            assert torch.equal(tensor, dst.state_dict()[name]), name
+
+        def assert_nested_equal(left, right, path="optimizer"):
+            if isinstance(left, torch.Tensor):
+                assert isinstance(right, torch.Tensor), path
+                assert torch.equal(left, right), path
+            elif isinstance(left, dict):
+                assert left.keys() == right.keys(), path
+                for key in left:
+                    assert_nested_equal(left[key], right[key], f"{path}.{key}")
+            elif isinstance(left, (list, tuple)):
+                assert len(left) == len(right), path
+                for index, (a, b) in enumerate(zip(left, right)):
+                    assert_nested_equal(a, b, f"{path}[{index}]")
+            else:
+                assert left == right, path
+
+        assert_nested_equal(
+            src_optimizer.state_dict(), dst_optimizer.state_dict()
+        )
+        src_loss = step(src, src_optimizer)
+        dst_loss = step(dst, dst_optimizer)
+        assert torch.equal(src_loss, dst_loss)
+        for (name_a, a), (name_b, b) in zip(
+            src.named_parameters(), dst.named_parameters()
+        ):
+            assert name_a == name_b
+            assert torch.equal(a, b), name_a
 
     def test_checkpoint_refuses_nonfinite_params(self, tmp_path):
         mod = _require_train_mod()
@@ -435,6 +508,62 @@ class TestSeedReproducibility:
         snap_b = next(iter(b.parameters())).detach().clone()
 
         assert torch.equal(snap_a, snap_b)
+
+
+class _SeededIterableDataset(IterableDataset):
+    def __iter__(self):
+        for _ in range(2):
+            yield torch.randint(0, 1000, (4,))
+
+
+class TestDataLoaderReproducibility:
+    def test_worker_init_fn_uses_worker_specific_seed(self, monkeypatch):
+        import training.data as data_module
+
+        random_seeds = []
+        torch_seeds = []
+        monkeypatch.setattr(data_module.random, "seed", random_seeds.append)
+        monkeypatch.setattr(data_module.torch, "manual_seed", torch_seeds.append)
+        monkeypatch.setattr(data_module.torch, "initial_seed", lambda: 42)
+
+        data_module._seed_worker(3)
+
+        assert random_seeds == [45]
+        assert torch_seeds == [45]
+
+    def test_production_loader_uses_worker_seed_fn(self):
+        from training.data import _seed_worker, build_dataloader
+
+        class _Encoding:
+            @staticmethod
+            def encode(text):
+                return []
+
+        loader = build_dataloader(
+            _Encoding(), 16, "sample-10BT", 0, 1, 2, num_workers=0
+        )
+        assert loader.worker_init_fn is _seed_worker
+
+    def test_real_multiworker_loader_reproduces_batches(self):
+        from training.data import _seed_worker
+
+        def collect(seed: int):
+            torch.manual_seed(seed)
+            loader = DataLoader(
+                _SeededIterableDataset(),
+                batch_size=2,
+                num_workers=2,
+                worker_init_fn=_seed_worker,
+            )
+            return list(loader)
+
+        first = collect(123)
+        second = collect(123)
+        different = collect(124)
+        assert len(first) == len(second) == 2
+        for a, b in zip(first, second):
+            assert torch.equal(a, b)
+        assert any(not torch.equal(a, b) for a, b in zip(first, different))
 
 
 # ---------------------------------------------------------------------------
