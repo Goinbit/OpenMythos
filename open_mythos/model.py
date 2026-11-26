@@ -157,6 +157,40 @@ class OpenMythos(nn.Module):
 
         return self.head(self.norm(x))
 
+    def _preallocate_kv_cache(
+        self, input_ids: torch.Tensor, n_loops: int
+    ) -> StaticKVCache:
+        batch = input_ids.shape[0]
+        device = input_ids.device
+        device_type = device.type
+        dtype = self.embed.weight.dtype
+        if torch.is_autocast_enabled(device_type):
+            dtype = torch.get_autocast_dtype(device_type)
+        cache = StaticKVCache(max_seq_len=self.cfg.max_seq_len)
+        if self.cfg.attn_type == "mla":
+            shapes = {
+                "c_kv": (batch, self.cfg.max_seq_len, self.cfg.kv_lora_rank),
+                "k_rope": (
+                    batch,
+                    self.cfg.max_seq_len,
+                    self.cfg.n_heads,
+                    self.cfg.qk_rope_head_dim,
+                ),
+            }
+        else:
+            head_dim = self.cfg.dim // self.cfg.n_heads
+            shapes = {
+                "k": (batch, self.cfg.max_seq_len, self.cfg.n_kv_heads, head_dim),
+                "v": (batch, self.cfg.max_seq_len, self.cfg.n_kv_heads, head_dim),
+            }
+        layers = [f"prelude_{i}" for i in range(self.cfg.prelude_layers)]
+        layers += [f"recurrent_loop_{i}" for i in range(n_loops)]
+        layers += [f"coda_{i}" for i in range(self.cfg.coda_layers)]
+        for layer in layers:
+            for suffix, shape in shapes.items():
+                cache.preallocate(f"{layer}:{suffix}", shape, dtype, device)
+        return cache
+
     @torch.no_grad()
     def generate(
         self,
@@ -187,10 +221,11 @@ class OpenMythos(nn.Module):
         Returns:
             Token indices of shape (B, T + max_new_tokens)
         """
-        # P3.3: StaticKVCache pre-allocates (B, max_seq_len, ...) buffers per
-        # layer so decode steps only write the new-token slice — no torch.cat
-        # reallocation across the generation loop.
-        kv_cache: StaticKVCache = StaticKVCache(max_seq_len=self.cfg.max_seq_len)
+        # P3.3: allocate every layer/loop buffer before the first forward so
+        # decode only writes slices and never allocates cache storage.
+        kv_cache: StaticKVCache = self._preallocate_kv_cache(
+            input_ids, n_loops or self.cfg.max_loop_iters
+        )
         prompt_len = input_ids.shape[1]
         for step in range(max_new_tokens):
             if step == 0:

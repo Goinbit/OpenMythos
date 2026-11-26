@@ -45,6 +45,23 @@ class StaticKVCache:
         self._buffers: dict[str, torch.Tensor] = {}
         self._positions: dict[str, int] = {}
 
+    def preallocate(
+        self,
+        key: str,
+        shape: tuple[int, ...],
+        dtype: torch.dtype,
+        device: torch.device | str,
+    ) -> None:
+        """Allocate a full-length cache buffer before the first decode write."""
+        if len(shape) < 3 or shape[1] != self.max_seq_len:
+            raise ValueError(
+                f"cache shape must be (B, {self.max_seq_len}, ...), got {shape}"
+            )
+        if key in self._buffers:
+            raise RuntimeError(f"cache key {key!r} is already allocated")
+        self._buffers[key] = torch.zeros(shape, dtype=dtype, device=device)
+        self._positions[key] = 0
+
     def write_and_read(self, key: str, tensor: torch.Tensor) -> torch.Tensor:
         """Append `tensor` at the current position for `key`; return the full prefix.
 

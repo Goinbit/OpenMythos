@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import inspect
 
 import torch
@@ -1699,6 +1700,23 @@ class TestStaticKVCache:
         assert cache.current_length("layer0:k") == 4
         assert "layer0" in cache
 
+    def test_preallocated_cache_512_writes_without_allocation(self, monkeypatch):
+        import open_mythos.kv_cache as cache_module
+
+        cache = self.StaticKVCache(max_seq_len=512)
+        cache.preallocate("k", (1, 512, 2, 4), torch.float32, "cpu")
+        buffer_id = cache.buffer_id("k")
+
+        def fail_allocation(*args, **kwargs):
+            raise AssertionError("cache allocated during decode")
+
+        monkeypatch.setattr(cache_module.torch, "zeros", fail_allocation)
+        chunk = torch.randn(1, 1, 2, 4)
+        for _ in range(512):
+            cache.write_and_read("k", chunk)
+        assert cache.current_length("k") == 512
+        assert cache.buffer_id("k") == buffer_id
+
     def test_multiple_writes_accumulate(self):
         cache = self.StaticKVCache(max_seq_len=16)
         a = torch.randn(2, 4, 3, 8)
@@ -1835,6 +1853,78 @@ class TestStaticKVCacheIntegration:
         for key in buffer_ids:
             assert cache.current_length(key) == expected_len, \
                 f"{key!r} length {cache.current_length(key)} != expected {expected_len}"
+
+    @pytest.mark.parametrize("attn_type", ["gqa", "mla"])
+    def test_generate_preallocates_every_cache_key_before_forward(self, attn_type, monkeypatch):
+        cfg = self._tiny_cfg(attn_type)
+        cfg = dataclasses.replace(
+            cfg, recurrence=dataclasses.replace(cfg.recurrence, max_loop_iters=3)
+        )
+        model = OpenMythos(cfg).eval()
+        prompt = torch.randint(0, cfg.vocab_size, (1, 3))
+        observed = {}
+        original_forward = model.forward
+
+        def checking_forward(input_ids, *args, **kwargs):
+            cache = kwargs.get("kv_cache")
+            if cache is not None and not observed:
+                observed["keys"] = set(cache._buffers)
+                observed["ids"] = {
+                    key: cache.buffer_id(key) for key in cache._buffers
+                }
+            return original_forward(input_ids, *args, **kwargs)
+
+        monkeypatch.setattr(model, "forward", checking_forward)
+        model.generate(prompt, max_new_tokens=2, n_loops=3, temperature=1e-8)
+
+        suffix = ("k", "v") if attn_type == "gqa" else ("c_kv", "k_rope")
+        expected = {
+            f"{layer}:{subkey}"
+            for layer in ("prelude_0", "coda_0")
+            for subkey in suffix
+        }
+        expected.update(
+            f"recurrent_loop_{loop_t}:{subkey}"
+            for loop_t in range(3)
+            for subkey in suffix
+        )
+        assert observed["keys"] == expected
+        assert all(buffer_id is not None for buffer_id in observed["ids"].values())
+
+    def test_greedy_decode_matches_dict_cache(self):
+        torch.manual_seed(42)
+        cfg = self._tiny_cfg("gqa")
+        model = OpenMythos(cfg).eval()
+        prompt = torch.randint(0, cfg.vocab_size, (1, 3))
+        n_loops = 2
+        max_new_tokens = 5
+
+        torch.manual_seed(7)
+        generated = model.generate(
+            prompt,
+            max_new_tokens=max_new_tokens,
+            n_loops=n_loops,
+            temperature=1e-8,
+            top_k=0,
+        )
+
+        torch.manual_seed(7)
+        current = prompt.clone()
+        cache: dict = {}
+        for step in range(max_new_tokens):
+            if step == 0:
+                cur_ids = current
+                start_pos = 0
+            else:
+                cur_ids = current[:, -1:]
+                start_pos = prompt.shape[1] + step - 1
+            logits = model(
+                cur_ids, n_loops=n_loops, kv_cache=cache, start_pos=start_pos
+            )[:, -1, :] / 1e-8
+            next_token = torch.multinomial(torch.softmax(logits, dim=-1), 1)
+            current = torch.cat([current, next_token], dim=1)
+
+        assert torch.equal(generated, current)
 
     def test_generate_uses_static_cache(self):
         """OpenMythos.generate() constructs a StaticKVCache internally.
