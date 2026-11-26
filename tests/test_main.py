@@ -746,55 +746,165 @@ class TestACTRegression:
 
     def test_act_weights_sum_approximately_one(self):
         torch.manual_seed(42)
-        captured: list[torch.Tensor] = []
+        with torch.no_grad():
+            self.block.act.halt.weight.zero_()
+            self.block.act.halt.bias.fill_(-10.0)
 
-        original_forward = self.block.forward
-
-        def instrumented_forward(h, e, freqs_cis, mask=None, n_loops=None, kv_cache=None):
-            n_loops = n_loops or self.block.cfg.max_loop_iters
-            B, T, D = h.shape
-            halted = torch.zeros(B, T, device=h.device, dtype=torch.bool)
-            cumulative_p = torch.zeros(B, T, device=h.device)
-            h_out = torch.zeros_like(h)
-
-            for t in range(n_loops):
-                h_loop = loop_index_embedding(h, t, self.block.loop_dim)
-                combined = self.block.norm(h_loop + e)
-                cache_key = f"recurrent_loop_{t}"
-                trans_out = self.block.block(combined, freqs_cis, mask, kv_cache, cache_key)
-                trans_out = trans_out + self.block.lora(trans_out, t)
-                h = self.block.injection(h, e, trans_out)
-
-                p = self.block.act(h)
-                still_running = ~halted
-                remainder = (1.0 - cumulative_p).clamp(min=0)
-                weight = torch.where(
-                    cumulative_p + p >= self.block.cfg.act_threshold,
-                    remainder,
-                    p,
-                )
-                weight = weight * still_running.float()
-                captured.append(weight.detach().clone())
-                h_out = h_out + weight.unsqueeze(-1) * h
-
-                cumulative_p = cumulative_p + p * still_running.float()
-                halted = halted | (cumulative_p >= self.block.cfg.act_threshold)
-
-                if halted.all() and kv_cache is None:
-                    break
-
-            return h_out
-
-        self.block.forward = instrumented_forward
+        hidden_states: list[torch.Tensor] = []
+        hook = self.block.injection.register_forward_hook(
+            lambda _module, _args, output: hidden_states.append(output.detach().clone())
+        )
         try:
             h = torch.randn(B, T, self.cfg.dim)
             e = torch.randn(B, T, self.cfg.dim)
-            self.block(h, e, self.freqs[:T], n_loops=self.cfg.max_loop_iters)
+            out = self.block(h, e, self.freqs[:T], n_loops=self.cfg.max_loop_iters)
         finally:
-            self.block.forward = original_forward
+            hook.remove()
 
-        total = torch.stack(captured, dim=0).sum(dim=0)  # (B, T)
-        assert torch.allclose(total, torch.ones_like(total), atol=1e-5)
+        assert len(hidden_states) == self.cfg.max_loop_iters
+        hidden_states = [state.reshape(B, T, self.cfg.dim) for state in hidden_states]
+        p = torch.sigmoid(torch.tensor(-10.0)).item()
+        expected = sum(p * state for state in hidden_states)
+        expected = expected + (1.0 - len(hidden_states) * p) * hidden_states[-1]
+        torch.testing.assert_close(out, expected, atol=1e-5, rtol=1e-5)
+
+    def test_halted_positions_do_not_affect_later_updates(self):
+        torch.manual_seed(42)
+        with torch.no_grad():
+            self.block.act.halt.weight.zero_()
+            self.block.act.halt.bias.fill_(torch.logit(torch.tensor(0.999)).item())
+
+        h = torch.randn(B, T, self.cfg.dim)
+        e = torch.randn(B, T, self.cfg.dim)
+        expected = self.block(h, e, self.freqs[:T], n_loops=4)
+
+        calls = {"ffn": 0, "lora": 0, "injection": 0, "act": 0}
+
+        def poison_after_first(output, key):
+            calls[key] += 1
+            if calls[key] == 1:
+                return output
+            return torch.full_like(output, 1.0e4)
+
+        hooks = []
+        for name, module in (
+            ("ffn", self.block.block.ffn),
+            ("lora", self.block.lora),
+            ("injection", self.block.injection),
+            ("act", self.block.act),
+        ):
+            hooks.append(
+                module.register_forward_hook(
+                    lambda _module, _args, output, key=name: poison_after_first(output, key)
+                )
+            )
+        try:
+            out = self.block(h, e, self.freqs[:T], n_loops=4)
+        finally:
+            for hook in hooks:
+                hook.remove()
+
+        assert calls == {"ffn": 4, "lora": 4, "injection": 4, "act": 4}
+        torch.testing.assert_close(out, expected, atol=0, rtol=0)
+
+    def test_halted_positions_keep_frozen_kv_context(self):
+        torch.manual_seed(42)
+        with torch.no_grad():
+            self.block.act.halt.weight.zero_()
+            self.block.act.halt.bias.fill_(torch.logit(torch.tensor(0.999)).item())
+
+        h = torch.randn(B, T, self.cfg.dim)
+        e = torch.randn(B, T, self.cfg.dim)
+        cache: dict = {}
+        with torch.no_grad():
+            self.block(h, e, self.freqs[:T], n_loops=4, kv_cache=cache)
+
+        for loop_t in range(2, 4):
+            torch.testing.assert_close(
+                cache[f"recurrent_loop_{loop_t}"]["k"],
+                cache["recurrent_loop_1"]["k"],
+                atol=0,
+                rtol=0,
+            )
+            torch.testing.assert_close(
+                cache[f"recurrent_loop_{loop_t}"]["v"],
+                cache["recurrent_loop_1"]["v"],
+                atol=0,
+                rtol=0,
+            )
+
+    def test_mixed_halt_preserves_active_gradients_and_frozen_positions(self):
+        torch.manual_seed(42)
+        h = torch.randn(B, T, self.cfg.dim, requires_grad=True)
+        e = torch.randn(B, T, self.cfg.dim, requires_grad=True)
+        first_p = torch.full((B, T), 0.01)
+        first_p[:, : T // 2] = 0.999
+        act_calls = 0
+
+        def mixed_halt(_module, _args, output):
+            nonlocal act_calls
+            act_calls += 1
+            desired = first_p if act_calls == 1 else torch.full_like(output, 0.01)
+            return desired + output - output.detach()
+
+        hidden_inputs: list[torch.Tensor] = []
+        injected: list[torch.Tensor] = []
+        hooks = [
+            self.block.act.register_forward_hook(mixed_halt),
+            self.block.injection.register_forward_pre_hook(
+                lambda _module, args: hidden_inputs.append(args[0].detach().clone())
+            ),
+            self.block.injection.register_forward_hook(
+                lambda _module, _args, output: injected.append(output.detach().clone())
+            ),
+        ]
+        try:
+            out = self.block(h, e, self.freqs[:T], n_loops=4)
+            out.square().mean().backward()
+        finally:
+            for hook in hooks:
+                hook.remove()
+
+        assert len(hidden_inputs) == len(injected) == 4
+        assert all(state.shape == (B, T, self.cfg.dim) for state in hidden_inputs)
+        torch.testing.assert_close(
+            hidden_inputs[2][:, : T // 2], hidden_inputs[1][:, : T // 2],
+            atol=0,
+            rtol=0,
+        )
+        assert not torch.equal(hidden_inputs[2][:, T // 2 :], hidden_inputs[1][:, T // 2 :])
+        torch.testing.assert_close(
+            out[:, : T // 2], injected[0][:, : T // 2], atol=0, rtol=0
+        )
+        assert h.grad is not None and torch.isfinite(h.grad).all()
+        assert e.grad is not None and torch.isfinite(e.grad).all()
+        assert self.block.block.ffn.routed_experts[0].gate.weight.grad is not None
+        assert self.block.lora.B.grad is not None
+        assert self.block.injection.B.grad is not None
+        assert self.block.act.halt.weight.grad is not None
+
+    def test_mla_halted_positions_keep_frozen_cache(self):
+        cfg = mla_cfg(max_loop_iters=4, act_threshold=0.99)
+        block = RecurrentBlock(cfg).eval()
+        torch.manual_seed(42)
+        with torch.no_grad():
+            block.act.halt.weight.zero_()
+            block.act.halt.bias.fill_(torch.logit(torch.tensor(0.999)).item())
+        h = torch.randn(B, T, cfg.dim)
+        e = torch.randn(B, T, cfg.dim)
+        freqs = precompute_rope_freqs(cfg.qk_rope_head_dim, cfg.max_seq_len)
+        cache: dict = {}
+        with torch.no_grad():
+            block(h, e, freqs[:T], n_loops=4, kv_cache=cache)
+
+        for loop_t in range(2, 4):
+            for key in ("c_kv", "k_rope"):
+                torch.testing.assert_close(
+                    cache[f"recurrent_loop_{loop_t}"][key],
+                    cache["recurrent_loop_1"][key],
+                    atol=0,
+                    rtol=0,
+                )
 
     def test_act_forced_halt_iter1_matches_hidden(self):
         torch.manual_seed(42)
@@ -1036,8 +1146,8 @@ class TestMythosConfigValidation:
 
 # ---------------------------------------------------------------------------
 # ACT halted hidden state frozen — P1.2
-# Halted positions must keep their iter-0 hidden state bit-exactly across
-# subsequent loops, so no new cache entries are written for them.
+# Halted positions must keep their halt-step hidden state bit-exactly across
+# subsequent loops; later K/V writes reuse that frozen context.
 # ---------------------------------------------------------------------------
 
 
@@ -1059,65 +1169,26 @@ class TestACTHaltedFrozen:
             self.block.act.halt.weight.zero_()
             self.block.act.halt.bias.fill_(torch.logit(torch.tensor(0.999)).item())
 
-        # Compute the iter-0 hidden state manually — the state every halted
-        # position should stay pinned to for all subsequent loop iterations.
-        h_loop = loop_index_embedding(h, 0, self.block.loop_dim)
-        combined = self.block.norm(h_loop + e)
-        trans_out = self.block.block(combined, self.freqs[:T], None, None, "recurrent_loop_0")
-        trans_out = trans_out + self.block.lora(trans_out, 0)
-        h_iter0 = self.block.injection(h, e, trans_out)
-
-        # Capture the internal h by swapping in an instrumented forward that
-        # mirrors the production logic but records h each iteration.
-        captured: list[torch.Tensor] = []
-        original_forward = self.block.forward
-
-        def instrumented(h_in, e_in, freqs_cis, mask=None, n_loops=None, kv_cache=None):
-            n_loops = n_loops or self.block.cfg.max_loop_iters
-            Bh, Th, Dh = h_in.shape
-            halted = torch.zeros(Bh, Th, device=h_in.device, dtype=torch.bool)
-            cumulative_p = torch.zeros(Bh, Th, device=h_in.device)
-            h_out = torch.zeros_like(h_in)
-            h_state = h_in
-            for t in range(n_loops):
-                h_loop = loop_index_embedding(h_state, t, self.block.loop_dim)
-                combined = self.block.norm(h_loop + e_in)
-                cache_key = f"recurrent_loop_{t}"
-                trans_out = self.block.block(combined, freqs_cis, mask, kv_cache, cache_key)
-                trans_out = trans_out + self.block.lora(trans_out, t)
-                h_new = self.block.injection(h_state, e_in, trans_out)
-                still_running_mask = (~halted).unsqueeze(-1).float()
-                h_state = h_new * still_running_mask + h_state * (1.0 - still_running_mask)
-                captured.append(h_state.detach().clone())
-
-                p = self.block.act(h_state)
-                still_running = ~halted
-                remainder = (1.0 - cumulative_p).clamp(min=0)
-                weight = torch.where(
-                    cumulative_p + p >= self.block.cfg.act_threshold,
-                    remainder,
-                    p,
-                )
-                weight = weight * still_running.float()
-                h_out = h_out + weight.unsqueeze(-1) * h_state
-                cumulative_p = cumulative_p + p * still_running.float()
-                halted = halted | (cumulative_p >= self.block.cfg.act_threshold)
-                # Production code (P3.5) removed the halted.all() early-exit to
-                # avoid a GPU sync and keep the loop compile-friendly. Mirror
-                # that here so every n_loops iteration actually runs and we can
-                # verify halted positions remain frozen.
-            return h_out
-
-        self.block.forward = instrumented
+        # Capture the real hidden state entering each production injection call.
+        # After the forced first-loop halt, every later input must stay bit-exact.
+        hidden_inputs: list[torch.Tensor] = []
+        injected: list[torch.Tensor] = []
+        pre_hook = self.block.injection.register_forward_pre_hook(
+            lambda _module, args: hidden_inputs.append(args[0].detach().clone())
+        )
+        post_hook = self.block.injection.register_forward_hook(
+            lambda _module, _args, output: injected.append(output.detach().clone())
+        )
         try:
-            self.block(h, e, self.freqs[:T], n_loops=3)
+            out = self.block(h, e, self.freqs[:T], n_loops=3)
         finally:
-            self.block.forward = original_forward
+            pre_hook.remove()
+            post_hook.remove()
 
-        # All n_loops iterations should have run; halted h must be bit-exact h_iter0.
-        assert len(captured) >= 2
-        for h_t in captured[1:]:
-            torch.testing.assert_close(h_t, h_iter0, atol=0, rtol=0)
+        assert len(hidden_inputs) == len(injected) == 3
+        for hidden in hidden_inputs[1:]:
+            torch.testing.assert_close(hidden, hidden_inputs[1], atol=0, rtol=0)
+        torch.testing.assert_close(out, injected[0], atol=0, rtol=0)
 
 
 # ---------------------------------------------------------------------------
