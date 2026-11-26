@@ -266,7 +266,7 @@ class _PoisonModel(torch.nn.Module):
 
 
 class TestTrainerNonfiniteGuard:
-    def _trainer(self, tmp_path, poison: str):
+    def _trainer(self, tmp_path, poison: str, scaler=None):
         from training.trainer import Trainer
 
         cfg = tiny_cfg()
@@ -294,6 +294,7 @@ class TestTrainerNonfiniteGuard:
             grad_accum_steps=1,
             warmup_steps=0,
             max_lr=0.1,
+            scaler=scaler,
         )
 
     @pytest.mark.parametrize("value", [float("nan"), float("inf")])
@@ -360,6 +361,127 @@ class TestTrainerNonfiniteGuard:
         trainer = self._trainer(tmp_path, "finite")
         trainer.run()
         assert len(list(tmp_path.glob("step_*.pt"))) == 1
+
+
+class TestTrainerGradScaler:
+    @staticmethod
+    def _wrap_calls(scaler):
+        from unittest.mock import Mock
+
+        for name in ("scale", "unscale_", "step", "update"):
+            setattr(scaler, name, Mock(wraps=getattr(scaler, name)))
+        return scaler
+
+    def test_enabled_scaler_drives_backward_clipping_and_optimizer(self, tmp_path):
+        scaler = self._wrap_calls(
+            torch.amp.GradScaler("cpu", enabled=True, init_scale=1024.0)
+        )
+        trainer = TestTrainerNonfiniteGuard()._trainer(
+            tmp_path, "finite", scaler=scaler
+        )
+        trainer.run()
+
+        assert scaler.scale.call_count == 1
+        assert scaler.unscale_.call_count == 1
+        assert scaler.step.call_count == 1
+        assert scaler.update.call_count == 1
+        assert len(list(tmp_path.glob("step_*.pt"))) == 1
+
+    def test_disabled_scaler_preserves_plain_optimizer_path(self, tmp_path):
+        scaler = self._wrap_calls(torch.amp.GradScaler("cpu", enabled=False))
+        trainer = TestTrainerNonfiniteGuard()._trainer(
+            tmp_path, "finite", scaler=scaler
+        )
+        trainer.run()
+
+        assert scaler.scale.call_count == 0
+        assert scaler.unscale_.call_count == 0
+        assert scaler.step.call_count == 0
+        assert scaler.update.call_count == 0
+        assert len(list(tmp_path.glob("step_*.pt"))) == 1
+
+    def test_nonfinite_gradient_blocks_scaled_optimizer_step(self, tmp_path):
+        scaler = torch.amp.GradScaler("cpu", enabled=True)
+        trainer = TestTrainerNonfiniteGuard()._trainer(
+            tmp_path, "finite", scaler=scaler
+        )
+        step_calls = 0
+        original_step = trainer.optimizer.step
+
+        def counting_step(*args, **kwargs):
+            nonlocal step_calls
+            step_calls += 1
+            return original_step(*args, **kwargs)
+
+        trainer.optimizer.step = counting_step
+        original_backward = torch.Tensor.backward
+
+        def poisoned_backward(tensor, *args, **kwargs):
+            result = original_backward(tensor, *args, **kwargs)
+            for parameter in trainer.model.parameters():
+                if parameter.grad is not None:
+                    parameter.grad.fill_(float("inf"))
+            return result
+
+        torch.Tensor.backward = poisoned_backward
+        try:
+            with pytest.raises(RuntimeError, match="Non-finite gradient norm"):
+                trainer.run()
+        finally:
+            torch.Tensor.backward = original_backward
+        assert step_calls == 0
+        assert list(tmp_path.glob("step_*.pt")) == []
+
+    def test_checkpoint_roundtrip_preserves_scaler_state(self, tmp_path):
+        from training.checkpoint import load_checkpoint, save_checkpoint
+
+        cfg = tiny_cfg()
+        source_model = _PoisonModel(cfg, "finite")
+        source_optimizer = torch.optim.SGD(source_model.parameters(), lr=0.1)
+        source_scaler = torch.amp.GradScaler("cpu", enabled=True)
+        source_scaler.load_state_dict(
+            {
+                "scale": 4096.0,
+                "growth_factor": 2.0,
+                "backoff_factor": 0.25,
+                "growth_interval": 500,
+                "_growth_tracker": 17,
+            }
+        )
+        save_checkpoint(
+            source_model,
+            source_optimizer,
+            step=7,
+            cfg=cfg,
+            vocab_size=cfg.vocab_size,
+            ckpt_dir=str(tmp_path),
+            ddp=False,
+            master=True,
+            scaler=source_scaler,
+        )
+
+        target_model = _PoisonModel(cfg, "finite")
+        target_optimizer = torch.optim.SGD(target_model.parameters(), lr=0.1)
+        target_scaler = torch.amp.GradScaler("cpu", enabled=True)
+        step = load_checkpoint(
+            target_model,
+            target_optimizer,
+            str(tmp_path / "step_0000007.pt"),
+            ddp=False,
+            cfg=cfg,
+            scaler=target_scaler,
+        )
+
+        assert step == 7
+        assert target_scaler.state_dict() == source_scaler.state_dict()
+
+    def test_entry_point_enables_scaler_only_for_fp16(self):
+        source = (
+            Path(__file__).resolve().parent.parent / "training" / "run_3b.py"
+        ).read_text()
+        assert 'torch.amp.GradScaler("cuda", enabled=' in source
+        assert "dt == torch.float16" in source
+        assert "scaler=scaler" in source
 
 
 # ---------------------------------------------------------------------------

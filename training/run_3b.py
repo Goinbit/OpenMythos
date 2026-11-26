@@ -34,7 +34,7 @@ def main() -> None:
     enc = MythosTokenizer()
     cfg = replace(mythos_3b(), vocab_size=enc.vocab_size, max_seq_len=SEQ_LEN)
     _validate_vocab_compatibility(enc, cfg)
-    dt = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+    dt = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16; scaler = torch.amp.GradScaler("cuda", enabled=torch.cuda.is_available() and dt == torch.float16)
     model = OpenMythos(cfg); apply_grad_checkpoint_if_enabled(model)  # no-op when USE_GRAD_CHECKPOINT=False
     if ddp:
         model = FSDP(model, sharding_strategy=ShardingStrategy.FULL_SHARD,  # type: ignore[assignment]
@@ -47,13 +47,13 @@ def main() -> None:
     opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WD, betas=(0.9, 0.95), fused=True)
     ga = max(1, 256 // (ws * MB)); gbt = ws * MB * ga * SEQ_LEN; total = TARGET_TOKENS // gbt
     ckpts = _list_ckpts(CKPT_DIR)
-    start = load_checkpoint(model, opt, ckpts[-1], ddp, cfg=cfg) if ckpts else 0
+    start = load_checkpoint(model, opt, ckpts[-1], ddp, cfg=cfg, scaler=scaler) if ckpts else 0
     if master and start: logger.success(f"Resumed at step {start}")
     hook = PeriodicEvalHook(EVAL_EVERY, build_validation_loader(enc, rank, ws, SEQ_LEN, SUBSET, MB), device, cfg.vocab_size, logger_obj=logger)
     Trainer(cfg=cfg, model=model, optimizer=opt, dataloader=build_dataloader(enc, SEQ_LEN, SUBSET, rank, ws, MB),
             device=device, local_rank=li, rank=rank, world_size=ws, ddp=ddp, master=master, amp_ctx=amp,
             vocab_size=cfg.vocab_size, ckpt_dir=CKPT_DIR, total_steps=total, log_every=LOG_EVERY, ckpt_every=CKPT_EVERY,
-            grad_accum_steps=ga, warmup_steps=WARMUP, max_lr=LR, global_batch_tok=gbt, eval_hook=hook).run(start_step=start)
+            grad_accum_steps=ga, warmup_steps=WARMUP, max_lr=LR, global_batch_tok=gbt, eval_hook=hook, scaler=scaler).run(start_step=start)
 
 
 if __name__ == "__main__":

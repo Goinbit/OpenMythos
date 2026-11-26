@@ -19,6 +19,7 @@ from typing import Callable, Optional
 import torch.distributed as dist
 import torch.nn as nn
 from loguru import logger
+from torch.amp import GradScaler
 
 from training.checkpoint import _list_ckpts, load_checkpoint, save_checkpoint
 from training.constants import USE_GRAD_CHECKPOINT
@@ -137,6 +138,7 @@ class Trainer:
         grad_clip: float = 1.0,
         global_batch_tok: int | None = None,
         eval_hook: Optional[Callable[[int, "Trainer"], None]] = None,
+        scaler: GradScaler | None = None,
     ) -> None:
         self.cfg = cfg
         self.model = model
@@ -161,6 +163,7 @@ class Trainer:
         self.grad_clip = grad_clip
         self.global_batch_tok = global_batch_tok
         self.eval_hook = eval_hook
+        self.scaler = scaler
 
     # -- checkpoint helpers ------------------------------------------------
 
@@ -175,12 +178,18 @@ class Trainer:
             self.ckpt_dir,
             self.ddp,
             self.master,
+            scaler=self.scaler,
         )
 
     def load(self, path: str) -> int:
         """Restore from ``path`` into this trainer's model/optimizer in-place."""
         return load_checkpoint(
-            self.model, self.optimizer, path, self.ddp, cfg=self.cfg
+            self.model,
+            self.optimizer,
+            path,
+            self.ddp,
+            cfg=self.cfg,
+            scaler=self.scaler,
         )
 
     # -- main loop ---------------------------------------------------------
@@ -205,6 +214,7 @@ class Trainer:
         target_device = (
             self.device if not self.ddp else f"cuda:{self.local_rank}"
         )
+        scaler = self.scaler
 
         while step < self.total_steps:
             cur_lr = get_lr(
@@ -259,8 +269,14 @@ class Trainer:
                         f"Non-finite loss at step {step}: {loss_value}"
                     )
 
-                loss.backward()
+                if scaler is not None and scaler.is_enabled():
+                    scaler.scale(loss).backward()
+                else:
+                    loss.backward()
                 loss_accum += loss_value
+
+            if scaler is not None and scaler.is_enabled():
+                scaler.unscale_(self.optimizer)
 
             # FSDP shards parameters, so `nn.utils.clip_grad_norm_` would clip
             # against each rank's local norm and miss the cross-shard gather.
@@ -276,7 +292,11 @@ class Trainer:
                 raise RuntimeError(
                     f"Non-finite gradient norm at step {step}: {grad_norm_value}"
                 )
-            self.optimizer.step()
+            if scaler is not None and scaler.is_enabled():
+                scaler.step(self.optimizer)
+                scaler.update()
+            else:
+                self.optimizer.step()
             step += 1
 
             if self.master and step % self.log_every == 0:

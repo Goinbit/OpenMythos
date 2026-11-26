@@ -160,13 +160,14 @@ class TestTrainingDocs:
             assert "FSDP" in _text()
             assert "PyTorch DDP via" not in _text()
 
-    def test_no_claim_about_a_mechanism_the_entry_point_lacks(self) -> None:
+    def test_precision_claim_matches_dynamic_scaling(self) -> None:
         entry = (REPO_ROOT / "training" / "run_3b.py").read_text()
         trainer = (REPO_ROOT / "training" / "trainer.py").read_text()
-        if "GradScaler" not in entry + trainer:
-            assert "GradScaler on older GPUs" not in _text()
-            assert "Uses GradScaler" not in _text()
-            assert "No dynamic loss scaler" in _text()
+        assert "GradScaler" in entry
+        assert "scaler.scale" in trainer
+        assert "scaler.unscale_" in trainer
+        assert "dynamic loss scaling" in _text()
+        assert "No dynamic loss scaler" not in _text()
 
     def test_warmup_and_token_budget_match_the_constants(self) -> None:
         from training import run_3b

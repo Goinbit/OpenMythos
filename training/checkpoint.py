@@ -15,6 +15,7 @@ import os
 
 import torch
 from loguru import logger
+from torch.amp import GradScaler
 from torch.distributed.fsdp import (
     FullStateDictConfig,
     FullyShardedDataParallel as FSDP,
@@ -57,6 +58,7 @@ def save_checkpoint(
     ddp: bool,
     master: bool,
     keep_last: int = 3,
+    scaler: GradScaler | None = None,
 ) -> None:
     """
     Gather full model + optimizer state, write atomically, prune old files.
@@ -82,6 +84,8 @@ def save_checkpoint(
         master      -- whether this rank writes to disk (rank 0 only)
         keep_last   -- number of most-recent checkpoints to retain; older ones
                        are unlinked after a successful write
+        scaler      -- optional AMP loss scaler; its dynamic scale/growth state
+                       is persisted so fp16 resume does not reset loss scaling
 
     Returns:
         None. Writes to disk as a side effect on master rank.
@@ -117,6 +121,9 @@ def save_checkpoint(
             "optimizer": optim_state,
             "cfg": cfg,
             "vocab_size": vocab_size,
+            "scaler": scaler.state_dict()
+            if scaler is not None and scaler.is_enabled()
+            else None,
         },
         tmp_path,
     )
@@ -131,7 +138,14 @@ def save_checkpoint(
     logger.success(f"Checkpoint saved → {final_path}")
 
 
-def load_checkpoint(model, optimizer, path: str, ddp: bool, cfg=None) -> int:
+def load_checkpoint(
+    model,
+    optimizer,
+    path: str,
+    ddp: bool,
+    cfg=None,
+    scaler: GradScaler | None = None,
+) -> int:
     """
     Restore model + optimizer from disk, returning the step to resume at.
 
@@ -156,6 +170,8 @@ def load_checkpoint(model, optimizer, path: str, ddp: bool, cfg=None) -> int:
                      and a mismatch raises ValueError. Defended here so a
                      tokenizer swap between runs fails loud instead of loading
                      weights with the wrong embedding table shape.
+        scaler    -- optional AMP loss scaler to restore from the checkpoint;
+                     legacy checkpoints without scaler state remain loadable
 
     Returns:
         The step number the checkpoint was taken at; the caller advances the
@@ -191,5 +207,9 @@ def load_checkpoint(model, optimizer, path: str, ddp: bool, cfg=None) -> int:
     else:
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
+
+    scaler_state = ckpt.get("scaler")
+    if scaler is not None and scaler_state is not None:
+        scaler.load_state_dict(scaler_state)
 
     return int(ckpt["step"])
