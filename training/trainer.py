@@ -14,16 +14,27 @@ import math
 import os
 import time
 from contextlib import nullcontext
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
+import torch
 import torch.distributed as dist
 import torch.nn as nn
 from loguru import logger
-from torch.amp import GradScaler
 
 from training.checkpoint import _list_ckpts, load_checkpoint, save_checkpoint
 from training.constants import USE_GRAD_CHECKPOINT
 from training.schedule import get_lr
+
+if TYPE_CHECKING:
+    from torch.amp import GradScaler
+
+
+def _make_grad_scaler(device_type: str, *, enabled: bool) -> GradScaler:
+    scaler_cls: Any = getattr(torch.amp, "GradScaler", None)
+    if scaler_cls is None:
+        scaler_cls = torch.cuda.amp.GradScaler
+    return scaler_cls(device_type, enabled=enabled)
+
 
 # _list_ckpts re-exported so callers doing `from training.trainer import ...`
 # still resolve — preserves run_3b.py's single-line import (≤60 line budget).

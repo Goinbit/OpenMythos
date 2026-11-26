@@ -475,11 +475,27 @@ class TestTrainerGradScaler:
         assert step == 7
         assert target_scaler.state_dict() == source_scaler.state_dict()
 
+    def test_scaler_factory_supports_legacy_torch(self, monkeypatch):
+        from training.trainer import _make_grad_scaler
+
+        calls = []
+
+        class LegacyScaler:
+            def __init__(self, device_type, *, enabled):
+                calls.append((device_type, enabled))
+
+        monkeypatch.delattr(torch.amp, "GradScaler", raising=False)
+        monkeypatch.setattr(torch.cuda.amp, "GradScaler", LegacyScaler)
+        scaler = _make_grad_scaler("cuda", enabled=True)
+
+        assert isinstance(scaler, LegacyScaler)
+        assert calls == [("cuda", True)]
+
     def test_entry_point_enables_scaler_only_for_fp16(self):
         source = (
             Path(__file__).resolve().parent.parent / "training" / "run_3b.py"
         ).read_text()
-        assert 'torch.amp.GradScaler("cuda", enabled=' in source
+        assert '_make_grad_scaler("cuda", enabled=' in source
         assert "dt == torch.float16" in source
         assert "scaler=scaler" in source
 

@@ -163,7 +163,8 @@ class TestTrainingDocs:
     def test_precision_claim_matches_dynamic_scaling(self) -> None:
         entry = (REPO_ROOT / "training" / "run_3b.py").read_text()
         trainer = (REPO_ROOT / "training" / "trainer.py").read_text()
-        assert "GradScaler" in entry
+        assert "_make_grad_scaler" in entry
+        assert "GradScaler" in trainer
         assert "scaler.scale" in trainer
         assert "scaler.unscale_" in trainer
         assert "dynamic loss scaling" in _text()

@@ -14,7 +14,7 @@ from open_mythos.tokenizer import MythosTokenizer
 from open_mythos.variants import mythos_3b
 from training.data import _validate_vocab_compatibility, build_dataloader
 from training.eval import PeriodicEvalHook, build_validation_loader
-from training.trainer import Trainer, _list_ckpts, apply_grad_checkpoint_if_enabled, load_checkpoint
+from training.trainer import Trainer, _list_ckpts, _make_grad_scaler, apply_grad_checkpoint_if_enabled, load_checkpoint
 
 SEED, SEQ_LEN, MB, TARGET_TOKENS, WARMUP, LR, WD = 42, 2048, 4, 30_000_000_000, 2000, 3e-4, 0.1
 LOG_EVERY, CKPT_EVERY, EVAL_EVERY, CKPT_DIR, SUBSET = 10, 1000, 1000, "checkpoints", "sample-10BT"
@@ -34,7 +34,7 @@ def main() -> None:
     enc = MythosTokenizer()
     cfg = replace(mythos_3b(), vocab_size=enc.vocab_size, max_seq_len=SEQ_LEN)
     _validate_vocab_compatibility(enc, cfg)
-    dt = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16; scaler = torch.amp.GradScaler("cuda", enabled=torch.cuda.is_available() and dt == torch.float16)
+    dt = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16; scaler = _make_grad_scaler("cuda", enabled=torch.cuda.is_available() and dt == torch.float16)
     model = OpenMythos(cfg); apply_grad_checkpoint_if_enabled(model)  # no-op when USE_GRAD_CHECKPOINT=False
     if ddp:
         model = FSDP(model, sharding_strategy=ShardingStrategy.FULL_SHARD,  # type: ignore[assignment]

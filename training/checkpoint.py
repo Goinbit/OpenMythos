@@ -12,15 +12,18 @@ the containing module moved.
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import torch
 from loguru import logger
-from torch.amp import GradScaler
 from torch.distributed.fsdp import (
     FullStateDictConfig,
     FullyShardedDataParallel as FSDP,
     StateDictType,
 )
+
+if TYPE_CHECKING:
+    from torch.amp import GradScaler
 
 
 def _list_ckpts(ckpt_dir: str) -> list[str]:
