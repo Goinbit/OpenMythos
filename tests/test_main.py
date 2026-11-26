@@ -2201,10 +2201,10 @@ class TestRouterProtocol:
         with torch.no_grad():
             router.linear.weight.zero_()
             router.linear.weight[:, 0] = torch.tensor(
-                [-100.0, -100.0, 100.0, 100.0], dtype=torch.float16
+                [-1000.0, -1000.0, 1000.0, 1000.0], dtype=torch.float16
             )
             router.router_bias.copy_(
-                torch.tensor([200.0, 200.0, 0.0, 0.0], dtype=torch.float16)
+                torch.tensor([3000.0, 3000.0, 0.0, 0.0], dtype=torch.float16)
             )
 
         topk_idx, topk_scores, scores = router(
