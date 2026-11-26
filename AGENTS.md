@@ -248,26 +248,26 @@ All work in this project must reference the phase/item below when opening a PR (
 |---|---|---|
 | Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部;公共 star import、NaN/Inf loss/梯度、fp16 全零 topk 均有生产回归 |
 | Stage 1 契约硬化 | 🟡 部分完成 | P1.2 已冻结 halted hidden/KV 并归一剩余权重;采用保守门控,未减少 dense Transformer flops |
-| Stage 2 回归测试补齐 | 🟡 数量达标、强度不均 | 现测 **373 passed**;生产 checkpoint/optimizer roundtrip、多 worker seed、MoE 前向/逐参数梯度等价已有证据 |
+| Stage 2 回归测试补齐 | 🟡 数量达标、强度不均 | 现测 **399 passed**;生产 checkpoint/optimizer roundtrip、多 worker seed、MoE 前向/逐参数梯度等价已有证据 |
 | Stage 3 性能融合 | 🔴 验收未闭环 | P3.2/P3.3/P3.5/P3.7 实现与本地证据已落地;P3.7 本机 7.167×、CI 5.818×。P3.5 CPU 计时仅 ~1.0×,−15% 与 GPU/规定形状/显存/3B 仍未验 |
-| Stage 4 架构重构 | 🟡 主体完成、契约未闭环 | 模块化与工厂可用;缺 `generate.py`/`moe/`,主路径 balance loss 未接入。held-out/all-rank eval 已修,真实 NCCL/FSDP 待 GPU |
+| Stage 4 架构重构 | 🟡 主体完成、契约未闭环 | 模块化/工厂与主路径 balance loss 已接通;缺 `generate.py`/`moe/` 蓝图。held-out/all-rank eval 已修,真实 NCCL/FSDP 待 GPU |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件;P5.5 的平方 mask/预设治理可本地先做 |
 | small LM 本机轨道(计划外) | ✅ 收束(T1-T6) | **最终交付 v9-T5 75k**:val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · endings 36/60;T6 平衡化负交换已记录([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
 | 深度外推实验(可行性门) | 🔴 判负(2026-10-27) | 外推不存在;深度买算力但 parity 不可扩展;**Phase 2 架构赌注关闭**([设计](docs/depth_extrapolation_experiment.md) · [路线](docs/commercial_roadmap.md)) |
 | 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
-**代码侧仍有已证实技术债,不再宣称“0 技术债”**:ACT dense flops、fp16 无 GradScaler、P3.3 懒分配、P4.1 目录蓝图与主路径 balance loss 缺口、README FlashAttention 2 假声明与闸门盲点。P3.2 专家循环/主机同步与 FSDP eval rank0-only 已修。验证通道本身已常态化:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 自动跑三闸门 + advisory benchmark;改动批次走“fork `main` 短分支 → fork 内 PR → `--merge`”。闸门版本栈由 workflow 级 `env:` 单一源定义,每个 job 在判定/计时前断言实际解析结果。**当前 trunk 证据**(实测于 `3158235`,run [`45862743249`](https://github.com/Goinbit/OpenMythos/actions/runs/45862743249)):5/5 success,py3.10/py3.12 各 368 passed @ `torch 2.12.0+cpu`,mypy 0/35,ruff 全过;主干 push 已连续 15 条全绿。**benchmark 只是 CPU advisory**:已下载 28 份 artifact(21 `AVX512` + 6 `AVX2` + 1 无 `cpu`),SDPA 1.223–2.125×(15/28 ≥1.5),MoE 2.484–3.368×(12/28 ≥3);P3.2 最新 arm64 3.493×、x86 AVX2 2.511×,按能力类分组不能解释方差,GPU 退出门槛未答。**分支拓扑**(实测于 `3158235`):上游 PR #91 head 仍 `66c40bb`;fork `main` 领先 upstream 154、领先该 head 44,behind 0。日常提交不触碰 PR #91 head。**PR #1 之前的历史提交仍无 check-run**。
+**代码侧仍有已证实技术债,不再宣称“0 技术债”**:ACT dense flops、fp16 无 GradScaler、P4.1 目录蓝图缺口、真实 NCCL/FSDP 与 3B GPU 门槛未验。P3.2 专家循环/主机同步、P3.3 首 forward 前 cache 预分配、FSDP eval rank0-only、主路径 balance loss 与 README 假声明已修。验证通道本身已常态化:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 自动跑三闸门 + advisory benchmark;改动批次走“fork `main` 短分支 → fork 内 PR → `--merge`”。闸门版本栈由 workflow 级 `env:` 单一源定义,每个 job 在判定/计时前断言实际解析结果。**当前 trunk 证据**(实测于 `4bd5b23`,run [`45879391892`](https://github.com/Goinbit/OpenMythos/actions/runs/45879391892)):5/5 success,py3.10/py3.12 各 394 passed @ `torch 2.12.0+cpu`,mypy 0/35,ruff 全过;主干 push 已连续 22 条全绿。**benchmark 只是 CPU advisory**:已下载 artifact 跨 `AVX512`/`AVX2`,SDPA 与 MoE 比率均随 runner 摆动;P3.2 最新 arm64 3.493×、x86 AVX2 2.511×,按能力类分组不能解释方差,GPU 退出门槛未答。**分支拓扑**(实测于 `4bd5b23`):上游 PR #91 head 仍 `66c40bb`;fork `main` 领先 upstream 177、领先该 head 67,behind 0。日常提交不触碰 PR #91 head。**PR #1 之前的历史提交仍无 check-run**。
 
 ### 基础设施齐备度
 
 | 项 | 状态 |
 |---|---|
 | **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
-| pytest 守护 | ✅ **394 passed / 0 skipped**(PR #22 口径)· 警告计数 **3**:2 条 LoRA 外推 + README Usage 块正常触发的 P1.3 warning,**不是回归** |
+| pytest 守护 | ✅ **399 passed / 0 skipped**(PR #23 口径)· 警告计数 **3**:2 条 LoRA 外推 + README Usage 块正常触发的 P1.3 warning,**不是回归** |
 | 文档契约(tests/test_readme_claims.py) | ✅ **README 16 项契约 + 镜像一致性**:覆盖相对链接、preset 双向与表格逐 cell、Usage 真执行、训练入口/并行/精度、warmup/token/subset、badge 包名、AdamW、数据集、tokenizer、调度;删除未实现的 FlashAttention 2 声明, GradScaler 反向声明加固。AGENTS/CLAUDE 规范化镜像由 `tests/test_instruction_mirror.py` 精确断言 |
-| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1106** stmts / 37 miss,2026-11-27 实测;`model.py` 99%、`kv_cache.py` 95%)—— 超阶段 2 ≥70% 门槛,但行覆盖率不等于危险分支覆盖 |
-| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **21 条全绿**(实测于 `07d96bf`),最新 run [`45878225944`](https://github.com/Goinbit/OpenMythos/actions/runs/45878225944) 5/5、双腿 392 passed。PR #22 代码 run [`45878776072`](https://github.com/Goinbit/OpenMythos/actions/runs/45878776072) 5/5、双腿 394 passed。PR #1 之前历史提交仍无 check-run |
+| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1130** stmts / 37 miss,2026-11-27 实测;`recurrence/block.py` 100%、`moe.py` 100%)—— 超阶段 2 ≥70% 门槛,但行覆盖率不等于危险分支覆盖 |
+| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **22 条全绿**(实测于 `4bd5b23`),最新 run [`45879391892`](https://github.com/Goinbit/OpenMythos/actions/runs/45879391892) 5/5、双腿 394 passed。PR #23 代码 run [`45880664143`](https://github.com/Goinbit/OpenMythos/actions/runs/45880664143) 5/5、双腿 399 passed。PR #1 之前历史提交仍无 check-run |
 | 性能证据(benchmarks/) | ✅ **有 CPU 读数,无 GPU 验收**:已下载 28 份 artifact(21 `AVX512` + 6 `AVX2` + 1 无 `cpu`),SDPA **1.223–2.125×**(15/28 ≥1.5),MoE **2.484–3.368×**(12/28 ≥3)。P3.2 grouped GEMM 最新本机 arm64 **3.493×**、CI `AVX2` **2.511×**,等价差 ~1e-7。实际为 seq256/bsz1/head8 CPU 微基准,不能证明规定 seq2048/bsz4/head16、显存或 3B GPU 门槛;判据只能按同坐标多次 run 分布 |
 | mypy 类型检查 | ✅ **0 errors / 35 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
 | ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
@@ -291,9 +291,10 @@ All work in this project must reference the phase/item below when opening a PR (
 - P3.7 loop embedding:`fa1ed48` → PR [#19](https://github.com/Goinbit/OpenMythos/pull/19),已合入 `6ab66ca`;PR run `45873742577` / `45874246546` 与 trunk run `45874496343` 均 5/5,trunk 双腿 384 passed。
 - 文档闸:`1a69f43` → PR [#20](https://github.com/Goinbit/OpenMythos/pull/20),已合入 `e40455a`;PR run `45875368515` / `45875973315` 与 trunk run `45876198740` 均 5/5,trunk 双腿 391 passed。
 - P0.3 zero-topk:`44b1d58` + 2 个跨平台测试修正 → PR [#21](https://github.com/Goinbit/OpenMythos/pull/21),已合入 `07d96bf`;最终 PR run `45877597819` / `45878029444` 与 trunk run `45878225944` 均 5/5,trunk 双腿 392 passed。
-- P0.1 public API:`dfa37dc` → PR [#22](https://github.com/Goinbit/OpenMythos/pull/22),代码 run [`45878776072`](https://github.com/Goinbit/OpenMythos/actions/runs/45878776072) 5/5、双腿 394 passed;Stage 0 验收缺口关闭。
-- 测试:350 → **394 passed**;覆盖率 **97% / 1106 stmts**;mypy 0/35;ruff 全过。
-- 审计:Stage 0 已完成;下一批可做 runbook/model card 契约或 P4.1 目录蓝图收口,GPU 与 fp16 scaler 仍待硬件。
+- P0.1 public API:`dfa37dc` → PR [#22](https://github.com/Goinbit/OpenMythos/pull/22),已合入 `4bd5b23`;PR run `45878776072` / `45879189010` 与 trunk run `45879391892` 均 5/5,trunk 双腿 394 passed;Stage 0 验收缺口关闭。
+- P4.2 main balance loss:`806c50e` → PR [#23](https://github.com/Goinbit/OpenMythos/pull/23),代码 run [`45880664143`](https://github.com/Goinbit/OpenMythos/actions/runs/45880664143) 5/5、双腿 399 passed;`alpha>0` 时 Trainer 加入逐 loop 累计 balance loss。
+- 测试:350 → **399 passed**;覆盖率 **97% / 1130 stmts**;mypy 0/35;ruff 全过。
+- 审计:Stage 0 已完成;下一批可做 P4.1 目录蓝图收口或 runbook/model card 契约,GPU 与 fp16 scaler 仍待硬件。
 
 ### 历史交付总览 · OpenMythos 22 commits(实测于 `f731717`,口径 = `git log --no-merges --since=2026-11-08 --pretty=%h fork/main | wc -l`,不含 merge commit)+ QuantKB 11 commits
 
@@ -316,8 +317,8 @@ All work in this project must reference the phase/item below when opening a PR (
 
 | 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| OpenMythos 测试 | 246 | **394**(2026-11-27) | +148 |
-| 覆盖率 | 97% / 948 stmts | **97% / 1106 stmts / 37 miss** | 百分比持平,基数 +158 |
+| OpenMythos 测试 | 246 | **399**(2026-11-27) | +153 |
+| 覆盖率 | 97% / 948 stmts | **97% / 1130 stmts / 37 miss** | 百分比持平,基数 +182 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
 | CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条全绿 main run(核对口径 `gh run list --branch main --event push`;已核 10 条,前 6 条 4/4、后 4 条 5/5;双腿同 `torch 2.12.0+cpu`,判定同为「全 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`」,passed 计数随合入前进(301 → 320 → 340 → 350,不在文档里钉死),自 `b8a604c` 起再加 benchmark artifact;该 artifact 八条 payload 实测跨 `AVX512`/`AVX2` 两个能力类,类内摆动 6.2%–17.4%、类间区间重叠且排序也不稳定** | 验证通道建立、持续、可复现且自证 |
 | 未推送提交 | 64(内容未入库) | **内容缺口 0**:fork `main`(实测当前 head 用 `gh api repos/Goinbit/OpenMythos/git/ref/heads/main --jq '.object.sha'`)已含全部代码与日志(长分支上 `5b321ee`/`eb106ae` 两个 docs 提交的内容以 cherry-pick `77b18b8`/`7aa035a` 进主干;那两个 SHA 仍留本地未推,以冻住上游 PR #91 的 head) | −64 |
@@ -358,6 +359,7 @@ All work in this project must reference the phase/item below when opening a PR (
 28. **文档闸要覆盖“数字/机制/镜像”三类不同谎言** —— README 契约扩展到 preset 表逐 cell、AdamW/数据集/tokenizer/调度对源、FlashAttention 2 与 GradScaler 反向声明;AGENTS/CLAUDE 则用规范化 round-trip 精确比较。文本检索只能证明字符串存在,配置对源与镜像等式才能证明声明仍与实现同步。
 29. **fp16 的数值保护不能只在 fp16 里做** —— P0.3 原实现 `clamp(min=1e-9)` 在 fp16 中直接下溢为 0,全零 topk 仍产生 NaN。归一化提升到 fp32,分母为 0 时回退到选中 experts 的均匀权重;测试强制 softmax 选中全零概率 expert。跨平台夹具还要避免 topk 并列顺序假设,只比较选中集合。
 30. **公共 API 回归必须同时测进程内与干净子进程** —— P0.1 的 `from open_mythos import *` 既验证 `__all__` 每个符号与包属性同一对象,也用独立 Python 进程复现用户导入动作;只 import 包本身会漏掉 star-import 的幽灵导出。
+31. **辅助损失要在配置生效的同一层接通,不能只暴露底层 opt-in API** —— P4.2 旧实现有 `MoEFFN.return_balance_loss`,但 `TransformerBlock` 没传 `moe_balance_alpha`,模型与 Trainer 也没消费返回值,配置项实际无效。新路径保持默认 Tensor-only,`alpha>0` 时逐 loop 累计并由 Trainer 加入 CE;测试同时覆盖 block/recurrent/model 默认等价与 Trainer 梯度。
 
 ---
 
@@ -446,6 +448,31 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-27 · P4.2 主路径 balance loss 接通:配置不再空转
+
+**分支:** OpenMythos `fix/p42-main-balance-loss`(自 fork `main` `4bd5b23` 起)· **commits:** `806c50e` + 本条目 docs 提交 → PR [#23](https://github.com/Goinbit/OpenMythos/pull/23);代码 run [`45880664143`](https://github.com/Goinbit/OpenMythos/actions/runs/45880664143) **5/5 success**,双腿 399 passed
+**Agents:** 无 · **完成 IDs:** **P4.2**(主路径接入部分)
+**约束执行:** 只动 fork 短分支与 fork 内 PR;上游 PR #91 head 仍 `66c40bb`;未 squash、未删 head 分支。
+
+### ✅ 完成
+- [open_mythos/blocks.py:43-85](file:///Users/macos/Desktop/Claude/OpenMythos/open_mythos/blocks.py#L43-L85) 将 `cfg.moe_balance_alpha` 传入 recurrent `MoEFFN`,并新增 opt-in `return_balance_loss`;dense block 明确拒绝该选项。
+- [open_mythos/recurrence/block.py:96-177](file:///Users/macos/Desktop/Claude/OpenMythos/open_mythos/recurrence/block.py#L96-L177) 逐 loop 累计 balance loss,默认返回路径不变。
+- [open_mythos/model.py:117-172](file:///Users/macos/Desktop/Claude/OpenMythos/open_mythos/model.py#L117-L172) 顶层 opt-in 返回 `(logits, balance_loss)`;`generate()` 显式走 Tensor-only 路径。
+- [training/trainer.py:243-254](file:///Users/macos/Desktop/Claude/OpenMythos/training/trainer.py#L243-L254) 在 `alpha>0` 时将 scaled balance loss 加入 CE,`alpha=0` 保持原行为。
+
+### 📊 测试变化
+- before:394 passed / 0 skipped / 3 warnings → after:**399 passed / 0 skipped / 3 warnings**(+5)
+- 覆盖率 **97% / 1130 stmts / 37 miss**;`recurrence/block.py` 与 `moe.py` 100%;mypy **0 errors / 35 files**;ruff 全过
+- 通道内证据:PR #23 代码 run `45880664143` **5/5**,pytest 双腿、mypy、ruff、advisory benchmark 全 success
+
+### 🔑 关键决策 / 发现
+- **配置项必须追到消费者**:旧 `moe_balance_alpha` 只存在于 config/MoEFFN,主路径既没传 alpha 也没取 balance loss,等于空转。
+- **辅助损失保持 opt-in**:默认输出与生成 API 不变,只有 `alpha>0` 的训练路径请求并累加,避免所有推理调用承担额外返回值/计算。
+- **测试覆盖梯度而非只测标量**:Trainer 用可控 fake balance 验证精确梯度,同时验证 `alpha=0` 时该参数无梯度。
+
+### 🧭 留到下阶段
+- P4.1 目录蓝图收口(`generate.py`/`moe/`)或 runbook/model card 契约;GPU、fp16 GradScaler、NCCL/FSDP 仍待硬件。
 
 ## 2026-11-27 · P0.1 公共 API star import 回归,Stage 0 验收关闭
 
