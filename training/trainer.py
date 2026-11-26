@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 def _make_grad_scaler(device_type: str, *, enabled: bool) -> GradScaler:
     scaler_cls: Any = getattr(torch.amp, "GradScaler", None)
     if scaler_cls is None:
-        scaler_cls = torch.cuda.amp.GradScaler
+        return torch.cuda.amp.GradScaler(enabled=enabled)
     return scaler_cls(device_type, enabled=enabled)
 
 

@@ -481,15 +481,15 @@ class TestTrainerGradScaler:
         calls = []
 
         class LegacyScaler:
-            def __init__(self, device_type, *, enabled):
-                calls.append((device_type, enabled))
+            def __init__(self, init_scale=65536.0, *, enabled=True):
+                calls.append((init_scale, enabled))
 
         monkeypatch.delattr(torch.amp, "GradScaler", raising=False)
         monkeypatch.setattr(torch.cuda.amp, "GradScaler", LegacyScaler)
         scaler = _make_grad_scaler("cuda", enabled=True)
 
         assert isinstance(scaler, LegacyScaler)
-        assert calls == [("cuda", True)]
+        assert calls == [(65536.0, True)]
 
     def test_entry_point_enables_scaler_only_for_fp16(self):
         source = (
