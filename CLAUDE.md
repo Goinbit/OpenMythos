@@ -248,7 +248,7 @@ All work in this project must reference the phase/item below when opening a PR (
 |---|---|---|
 | Stage 0 紧急修复 | 🟡 基本完成 | P0.2 已有 NaN/Inf loss/梯度生产回归;P0.1/P0.3 指定回归仍缺 |
 | Stage 1 契约硬化 | 🟡 部分完成 | P1.2 已冻结 halted hidden/KV 并归一剩余权重;采用保守门控,未减少 dense Transformer flops |
-| Stage 2 回归测试补齐 | 🟡 数量达标、强度不均 | 现测 **364 passed**;部分生产路径/梯度等价/真实 DataLoader 覆盖仍弱 |
+| Stage 2 回归测试补齐 | 🟡 数量达标、强度不均 | 现测 **368 passed**;生产 checkpoint/optimizer roundtrip 与多 worker seed 已有证据,其余梯度等价/真实训练覆盖仍弱 |
 | Stage 3 性能融合 | 🔴 验收未闭环 | P3.2 仍有专家 Python 循环与 `.tolist()`;P3.3 首次写入懒分配;无规定形状/显存/3B GPU 证据 |
 | Stage 4 架构重构 | 🟡 主体完成、契约未闭环 | 模块化与工厂可用;缺 `generate.py`/`moe/`,主路径 balance loss 未接入,训练 eval 非 held-out 且 FSDP rank0-only 有挂起风险 |
 | Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件;P5.5 的平方 mask/预设治理可本地先做 |
@@ -264,7 +264,7 @@ All work in this project must reference the phase/item below when opening a PR (
 | 项 | 状态 |
 |---|---|
 | **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
-| pytest 守护 | ✅ **364 passed / 0 skipped**(2026-11-27 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试)· 警告计数 **4**:3 条 LoRA 外推 + README Usage 块 `generate(n_loops=8)` 正常触发的 P1.3 warning,**不是回归** |
+| pytest 守护 | ✅ **368 passed / 0 skipped**(2026-11-27 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试;多 worker spawn 用例使本机耗时约 47s)· 警告计数 **4**:3 条 LoRA 外推 + README Usage 块 `generate(n_loops=8)` 正常触发的 P1.3 warning,**不是回归** |
 | 文档契约(tests/test_readme_claims.py) | ✅ **README 已进入契约测,但覆盖有盲点**:10 项覆盖相对链接、preset 双向、Usage 真执行、训练入口/并行/精度与 warmup/token/subset;首轮判负 6 条假声明并修正。**未覆盖** PyPI badge/AdamW/数据集/调度/preset 表数字与 FlashAttention 2 声明;GradScaler 检查只禁一个精确短语,实测改成 "Uses GradScaler" 仍通过 |
 | 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1030** stmts / 33 miss,2026-11-27 实测;`recurrence/block.py` 100%)—— 超阶段 2 ≥70% 门槛,但行覆盖率不等于危险分支覆盖 |
 | GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **11 条全绿**(实测于 `c7ef525`,核对 `gh run list --branch main --event push`),最新 run [`45382772415`](https://github.com/Goinbit/OpenMythos/actions/runs/45382772415) 5/5、双腿 350 passed。PR #12 代码 run [`45855556139`](https://github.com/Goinbit/OpenMythos/actions/runs/45855556139) 同样 5/5。PR #1 之前历史提交仍无 check-run |
@@ -283,9 +283,10 @@ All work in this project must reference the phase/item below when opening a PR (
 ### 当前批次
 - ACT:`2b4c66f` `[P1.2]` → PR [#12](https://github.com/Goinbit/OpenMythos/pull/12),已合入 `ead165f`;PR run `45855556139` / `45856424375` 与 trunk run `45856664827` 均 5/5,trunk 双腿 354 passed。
 - 训练安全:`66b0d76` `[P0.2]` → PR [#13](https://github.com/Goinbit/OpenMythos/pull/13),已合入 `4d7228e`;PR run `45857848604` / `45858278340` 与 trunk run `45858560516` 均 5/5,trunk 双腿 359 passed。
-- held-out/eval:`420db8a` `[P4.5]` → PR [#14](https://github.com/Goinbit/OpenMythos/pull/14),代码 run [`45859922584`](https://github.com/Goinbit/OpenMythos/actions/runs/45859922584) 5/5。
-- 测试:350 → **364 passed**;覆盖率 **97% / 1030 stmts**;mypy 0/35;ruff 全过。
-- 审计:撤销 Stage 3/4“全部完成”和“0 技术债”口径;下一优先级 = 生产 checkpoint/DataLoader 复现 → P3.2 → P3.3/P3.5/P3.7 证据 → 文档闸。
+- held-out/eval:`420db8a` `[P4.5]` → PR [#14](https://github.com/Goinbit/OpenMythos/pull/14),已合入 `57c2aa3`;PR run `45859922584` / `45860376776` 与 trunk run `45860647756` 均 5/5,trunk 双腿 364 passed。
+- checkpoint/DataLoader:`f849103` `[P2.7]` → PR [#15](https://github.com/Goinbit/OpenMythos/pull/15),代码 run [`45861925924`](https://github.com/Goinbit/OpenMythos/actions/runs/45861925924) 5/5。
+- 测试:350 → **368 passed**;覆盖率 **97% / 1030 stmts**;mypy 0/35;ruff 全过。
+- 审计:撤销 Stage 3/4“全部完成”和“0 技术债”口径;下一优先级 = P3.2 → P3.3/P3.5/P3.7 证据 → 文档闸;fp16 scaler/NCCL 仍待 GPU。
 
 ### 历史交付总览 · OpenMythos 22 commits(实测于 `f731717`,口径 = `git log --no-merges --since=2026-11-08 --pretty=%h fork/main | wc -l`,不含 merge commit)+ QuantKB 11 commits
 
@@ -308,7 +309,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 | 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| OpenMythos 测试 | 246 | **364**(2026-11-27) | +118 |
+| OpenMythos 测试 | 246 | **368**(2026-11-27) | +122 |
 | 覆盖率 | 97% / 948 stmts | **97% / 1030 stmts / 33 miss** | 百分比持平,基数 +82 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
 | CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条全绿 main run(核对口径 `gh run list --branch main --event push`;已核 10 条,前 6 条 4/4、后 4 条 5/5;双腿同 `torch 2.12.0+cpu`,判定同为「全 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`」,passed 计数随合入前进(301 → 320 → 340 → 350,不在文档里钉死),自 `b8a604c` 起再加 benchmark artifact;该 artifact 八条 payload 实测跨 `AVX512`/`AVX2` 两个能力类,类内摆动 6.2%–17.4%、类间区间重叠且排序也不稳定** | 验证通道建立、持续、可复现且自证 |
@@ -431,6 +432,32 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-27 · P2.7/P0.5 生产 checkpoint 与多 worker 复现证据补齐
+
+**分支:** OpenMythos `test/checkpoint-dataloader-repro`(自 fork `main` `57c2aa3` 起)· **commits:** `f849103` + 本条目 docs 提交 → PR [#15](https://github.com/Goinbit/OpenMythos/pull/15);代码 run [`45861925924`](https://github.com/Goinbit/OpenMythos/actions/runs/45861925924) **5/5 success**
+**Agents:** 无 · **完成 IDs:** **P2.7, P0.5**(生产路径回归证据;真实 3B/FSDP 仍待 GPU)
+**约束执行:** 只动 fork 短分支与 fork 内 PR;上游 PR #91 head 仍 `66c40bb`;未 squash、未删 head 分支。
+
+### ✅ 完成
+- [tests/test_training.py:149-246](file:///Users/macos/Desktop/Claude/OpenMythos/tests/test_training.py#L149-L246) 使用生产 `save_checkpoint/load_checkpoint` 保存已训练模型与 AdamW 状态,逐 key 比较模型、buffer、optimizer state,再在相同 batch 上续训一步并断言 loss/参数逐位一致。
+- [tests/test_training.py:519-575](file:///Users/macos/Desktop/Claude/OpenMythos/tests/test_training.py#L519-L575) 验证 `_seed_worker(worker_id)` 的 seed 推导、生产 `build_dataloader` 挂载,以及真实双 worker DataLoader 同 seed 批次数一致/不同 seed 输出不同。
+
+### 📊 测试变化
+- before:364 passed / 0 skipped / 4 warnings → after:**368 passed / 0 skipped / 4 warnings**(+4;纯测试证据,无生产代码变更)
+- 覆盖率维持 **97% / 1030 stmts**;mypy **0 errors / 35 files**;ruff 全过
+- 本机全量 **46.89s**(macOS spawn 多 worker 用例约 35s);CI timeout 120s 内通过
+- 通道内证据:PR #15 代码 run `45861925924` **5/5**,pytest 双腿、mypy、ruff、advisory benchmark 全 success
+
+### 🔑 关键决策 / 发现
+- **实现已正确,缺的是生产路径证据**:本批没有为了“有改动”而改生产代码;回归直接调用真实 checkpoint I/O 与 DataLoader,关闭审计指出的弱证据项。
+- **optimizer roundtrip 必须逐 tensor 比较**:只比 model state 会漏掉 momentum/variance 恢复问题;本批递归比较整个 optimizer state,并加一步续训 bit-exact。
+- **多 worker 测试需要 top-level 可 pickle 类型**:局部编码器在 macOS spawn 下无法序列化;改用顶层 `_SeededIterableDataset`,避免为测试强制全局 fork。
+
+### 🧭 留到下阶段
+- P3.2:移除专家 Python 循环与 `.tolist()`,补前向/梯度等价和 64 专家同坐标 benchmark。
+- P3.3/P3.5/P3.7:预分配、分配计数、ACT sync/耗时、loop embedding 临时分配证据。
+- fp16 GradScaler 与真实 NCCL/FSDP 仍待 GPU。
 
 ## 2026-11-27 · P4.5 held-out 数据桶 + FSDP eval 全 rank 参与
 
