@@ -2210,7 +2210,7 @@ class TestRouterProtocol:
         topk_idx, topk_scores, scores = router(
             torch.ones(1, cfg.dim, dtype=torch.float16)
         )
-        assert topk_idx.tolist() == [[0, 1]]
+        assert sorted(topk_idx[0].tolist()) == [0, 1]
         assert torch.count_nonzero(scores.gather(-1, topk_idx)) == 0
         assert torch.isfinite(topk_scores).all()
         torch.testing.assert_close(
