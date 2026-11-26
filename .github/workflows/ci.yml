@@ -166,7 +166,13 @@ jobs:
         run: >-
           python -m benchmarks.gate_bench
           --seq-len 256 --repeat 3 --threads 1 --json gate_bench.json
+      - name: Run recurrent benchmark
+        run: >-
+          python -m benchmarks.recurrent_bench
+          --repeat 3 --threads 1 --json recurrent_bench.json
       - uses: actions/upload-artifact@v4
         with:
           name: gate-bench-${{ github.run_id }}
-          path: gate_bench.json
+          path: |
+            gate_bench.json
+            recurrent_bench.json

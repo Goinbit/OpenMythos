@@ -136,3 +136,5 @@ class TestWorkflowSingleSource:
         assert "continue-on-error: true" in job
         assert 'python -m examples.ci_gate_stack "${GATE_TORCH}"' in job
         assert "benchmarks.gate_bench" in job
+        assert "benchmarks.recurrent_bench" in job
+        assert "recurrent_bench.json" in job
