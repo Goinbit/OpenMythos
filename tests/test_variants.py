@@ -55,6 +55,13 @@ def test_preset_structural_invariants(preset):
     )
 
 
+def test_large_presets_use_realistic_context_budgets():
+    for preset in (mythos_100b, mythos_500b, mythos_1t):
+        cfg = preset()
+        assert cfg.max_seq_len == 32768, preset.__name__
+        assert cfg.max_output_tokens <= cfg.max_seq_len, preset.__name__
+
+
 def test_preset_1b_forward_pass_with_reduced_dims():
     base = mythos_1b()
     reduced = dataclasses.replace(base, vocab_size=100, max_seq_len=16)

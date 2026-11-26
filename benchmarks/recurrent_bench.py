@@ -1,4 +1,4 @@
-"""Executable evidence for ACT fixed-loop and host-sync behaviour."""
+"""Executable evidence for ACT, loop embedding, and causal-mask behaviour."""
 from __future__ import annotations
 
 import argparse
@@ -58,6 +58,24 @@ class _SyncCounter(TorchDispatchMode):
             torch.ops.aten.all.default,
         ):
             self.calls += 1
+        return func(*args, **kwargs)
+
+
+class _MaskCounter(TorchDispatchMode):
+    def __init__(self):
+        self.calls = 0
+        self.elements = 0
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        if func in (
+            torch.ops.aten.full.default,
+            torch.ops.aten.triu.default,
+        ):
+            self.calls += 1
+            if func == torch.ops.aten.full.default:
+                self.elements += torch.Size(args[0]).numel()
+            else:
+                self.elements += args[0].numel()
         return func(*args, **kwargs)
 
 
@@ -200,6 +218,48 @@ def bench_loop_embedding(repeat: int = 3) -> dict:
     }
 
 
+@torch.no_grad()
+def bench_causal_mask(seq_len: int = 256, repeat: int = 3) -> dict:
+    cfg = dataclasses.replace(_cfg(), max_seq_len=seq_len)
+    model = OpenMythos(cfg).eval()
+    input_ids = torch.randint(0, cfg.vocab_size, (1, seq_len))
+
+    def reference():
+        freqs = model.freqs_cis[:seq_len]
+        mask = torch.full((1, 1, seq_len, seq_len), float("-inf"))
+        mask = torch.triu(mask, diagonal=1)
+        x = model.embed(input_ids)
+        for index, layer in enumerate(model.prelude):
+            x = layer(x, freqs, mask, None, cache_key=f"prelude_{index}")
+        e = x
+        x = model.recurrent(x, e, freqs, mask)
+        for index, layer in enumerate(model.coda):
+            x = layer(x, freqs, mask, None, cache_key=f"coda_{index}")
+        return model.head(model.norm(x))
+
+    def fused():
+        return model(input_ids)
+
+    max_diff = float((reference() - fused()).abs().max())
+    with _MaskCounter() as base_counter:
+        reference()
+    with _MaskCounter() as fast_counter:
+        fused()
+    base_ms = _timed_ms(reference, repeat)
+    fast_ms = _timed_ms(fused, repeat)
+    return {
+        "seq_len": seq_len,
+        "base_ms": base_ms,
+        "fast_ms": fast_ms,
+        "ratio": base_ms / fast_ms,
+        "max_diff": max_diff,
+        "base_mask_ops": base_counter.calls,
+        "fast_mask_ops": fast_counter.calls,
+        "base_mask_elements": base_counter.elements,
+        "fast_mask_elements": fast_counter.elements,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeat", type=int, default=3)
@@ -218,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         "generate_sync": bench_generate_sync(),
         "act_timing": bench_act_timing(repeat=args.repeat),
         "loop_embedding": bench_loop_embedding(repeat=args.repeat),
+        "causal_mask": bench_causal_mask(seq_len=256, repeat=args.repeat),
     }
     print("[recurrent-bench] " + json.dumps(payload), flush=True)
     if args.json:

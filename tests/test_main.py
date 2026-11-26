@@ -1288,6 +1288,50 @@ def _manual_sdpa(
     return torch.matmul(attn, v)
 
 
+class TestP55LongContext:
+    def test_model_source_has_no_dense_mask_builder(self):
+        source = inspect.getsource(OpenMythos)
+        assert "_causal_mask" not in source
+        assert "torch.full" not in source
+
+    @pytest.mark.parametrize("attn_type", ["gqa", "mla"])
+    def test_explicit_causal_flag_matches_legacy_mask(self, attn_type):
+        torch.manual_seed(0)
+        cfg = gqa_cfg(attn_type=attn_type)
+        attn_cls = GQAttention if attn_type == "gqa" else MLAttention
+        attn = attn_cls(cfg).eval()
+        rope_dim = (
+            cfg.dim // cfg.n_heads
+            if attn_type == "gqa"
+            else cfg.qk_rope_head_dim
+        )
+        freqs = precompute_rope_freqs(rope_dim, cfg.max_seq_len, cfg.rope_theta)
+        x = torch.randn(1, 6, cfg.dim)
+        mask = torch.triu(
+            torch.full((1, 1, 6, 6), float("-inf")), diagonal=1
+        )
+
+        legacy = attn(x, freqs[:6], mask=mask)
+        fused = attn(x, freqs[:6], mask=None, causal=True)
+
+        torch.testing.assert_close(fused, legacy, atol=1e-5, rtol=1e-5)
+
+    @pytest.mark.parametrize("attn_type", ["gqa", "mla"])
+    def test_model_forward_does_not_allocate_dense_mask(self, monkeypatch, attn_type):
+        cfg = gqa_cfg(attn_type=attn_type)
+        model = OpenMythos(cfg).eval()
+        input_ids = torch.randint(0, cfg.vocab_size, (2, 8))
+
+        def fail_full(*args, **kwargs):
+            raise AssertionError("dense causal mask allocation is forbidden")
+
+        monkeypatch.setattr(torch, "full", fail_full)
+        with torch.no_grad():
+            logits = model(input_ids)
+
+        assert logits.shape == (2, 8, cfg.vocab_size)
+
+
 class TestSDPAEquivalence:
     def test_gqa_sdpa_matches_manual_causal(self):
         """After P3.1, GQAttention output must equal the manual softmax(QK^T)·V path."""

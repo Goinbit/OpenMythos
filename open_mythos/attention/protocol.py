@@ -31,4 +31,5 @@ class AttentionProtocol(Protocol):
         mask: Optional[torch.Tensor] = None,
         kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         cache_key: str = "default",
+        causal: Optional[bool] = None,
     ) -> torch.Tensor: ...
