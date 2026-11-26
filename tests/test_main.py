@@ -2193,6 +2193,30 @@ class TestRouterProtocol:
         sums = topk_scores.sum(dim=-1)
         torch.testing.assert_close(sums, torch.ones(N), atol=1e-5, rtol=1e-5)
 
+    def test_fp16_zero_topk_scores_stay_finite_and_normalized(self):
+        from open_mythos.moe import build_router
+
+        cfg = gqa_cfg(n_experts=4, n_experts_per_tok=2)
+        router = build_router(cfg).half()
+        with torch.no_grad():
+            router.linear.weight.zero_()
+            router.linear.weight[:, 0] = torch.tensor(
+                [-100.0, -100.0, 100.0, 100.0], dtype=torch.float16
+            )
+            router.router_bias.copy_(
+                torch.tensor([200.0, 200.0, 0.0, 0.0], dtype=torch.float16)
+            )
+
+        topk_idx, topk_scores, scores = router(
+            torch.ones(1, cfg.dim, dtype=torch.float16)
+        )
+        assert topk_idx.tolist() == [[0, 1]]
+        assert torch.count_nonzero(scores.gather(-1, topk_idx)) == 0
+        assert torch.isfinite(topk_scores).all()
+        torch.testing.assert_close(
+            topk_scores.sum(dim=-1), torch.ones(1, dtype=torch.float16)
+        )
+
     def test_moe_ffn_uses_build_router(self):
         """MoEFFN.router is now the BiasRouter module (not a raw nn.Linear).
         State-dict layout reflects the wrap: router.linear.weight etc."""
