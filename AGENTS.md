@@ -248,27 +248,27 @@ All work in this project must reference the phase/item below when opening a PR (
 |---|---|---|
 | Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部;公共 star import、NaN/Inf loss/梯度、fp16 全零 topk、fp16 动态 loss scaling 均有生产回归 |
 | Stage 1 契约硬化 | 🟡 部分完成 | P1.2 已冻结 halted hidden/KV 并归一剩余权重;采用保守门控,未减少 dense Transformer flops |
-| Stage 2 回归测试补齐 | 🟡 数量达标、强度不均 | 现测 **409 passed**;生产 checkpoint/optimizer/scaler roundtrip、多 worker seed、MoE 前向/逐参数梯度等价已有证据 |
+| Stage 2 回归测试补齐 | 🟡 数量达标、强度不均 | 现测 **416 passed**;生产 checkpoint/optimizer/scaler roundtrip、多 worker seed、MoE 前向/逐参数梯度等价已有证据 |
 | Stage 3 性能融合 | 🔴 验收未闭环 | P3.2/P3.3/P3.5/P3.7 实现与本地证据已落地;P3.7 本机 7.167×、CI 5.818×。P3.5 CPU 计时仅 ~1.0×,−15% 与 GPU/规定形状/显存/3B 仍未验 |
 | Stage 4 架构重构 | 🟡 主体完成、契约未闭环 | `generate.py` 与 `moe/` 包蓝图已收口,公共导入/state_dict 不变;held-out/all-rank eval 与主路径 balance loss 已修。训练前后 bit-exact 与真实 NCCL/FSDP 仍待验证 |
-| Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件;P5.5 的平方 mask/预设治理可本地先做 |
+| Stage 5 大规模训练 | 🟡 本地部分完成 | P5.5 平方 mask 移除与 32K 预设治理已落地;P5.1-P5.4 与 32K 单卡训练仍待 GPU |
 | small LM 本机轨道(计划外) | ✅ 收束(T1-T6) | **最终交付 v9-T5 75k**:val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · endings 36/60;T6 平衡化负交换已记录([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
 | 深度外推实验(可行性门) | 🔴 判负(2026-10-27) | 外推不存在;深度买算力但 parity 不可扩展;**Phase 2 架构赌注关闭**([设计](docs/depth_extrapolation_experiment.md) · [路线](docs/commercial_roadmap.md)) |
 | 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
-**代码侧仍有已证实技术债,不再宣称“0 技术债”**:ACT dense flops、fp16 GradScaler 的 CUDA/FSDP 实战验证、训练前后 bit-exact 无证据、真实 NCCL/FSDP 与 3B GPU 门槛未验。P3.2 专家循环/主机同步、P3.3 首 forward 前 cache 预分配、FSDP eval rank0-only、主路径 balance loss、P4.1 目录蓝图与 README 假声明已修。验证通道本身已常态化:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 自动跑三闸门 + advisory benchmark;改动批次走“fork `main` 短分支 → fork 内 PR → `--merge`”。闸门版本栈由 workflow 级 `env:` 单一源定义,每个 job 在判定/计时前断言实际解析结果。**当前 trunk 证据**(实测于 `f9f2516`,run [`45883521357`](https://github.com/Goinbit/OpenMythos/actions/runs/45883521357)):5/5 success,py3.10/py3.12 各 403 passed @ `torch 2.12.0+cpu`,mypy 0/38,ruff 全过;主干 push 已连续 24 条全绿。**benchmark 只是 CPU advisory**:已下载 artifact 跨 `AVX512`/`AVX2`,SDPA 与 MoE 比率均随 runner 摆动;P3.2 最新 arm64 3.493×、x86 AVX2 2.511×,按能力类分组不能解释方差,GPU 退出门槛未答。**分支拓扑**(实测于 `f9f2516`):上游 PR #91 head 仍 `66c40bb`;fork `main` 领先 upstream 183、领先该 head 73,behind 0。日常提交不触碰 PR #91 head。**PR #1 之前的历史提交仍无 check-run**。
+**代码侧仍有已证实技术债,不再宣称“0 技术债”**:ACT dense flops、fp16 GradScaler 的 CUDA/FSDP 实战验证、训练前后 bit-exact 无证据、真实 NCCL/FSDP 与 3B GPU 门槛未验。P3.2 专家循环/主机同步、P3.3 首 forward 前 cache 预分配、FSDP eval rank0-only、主路径 balance loss、P4.1 目录蓝图与 README 假声明已修。验证通道本身已常态化:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 自动跑三闸门 + advisory benchmark;改动批次走“fork `main` 短分支 → fork 内 PR → `--merge`”。闸门版本栈由 workflow 级 `env:` 单一源定义,每个 job 在判定/计时前断言实际解析结果。**当前 trunk 证据**(实测于 `0f6396e`,run [`45885866871`](https://github.com/Goinbit/OpenMythos/actions/runs/45885866871)):5/5 success,py3.10/py3.12 各 409 passed @ `torch 2.12.0+cpu`,mypy 0/38,ruff 全过;主干 push 已连续 25 条全绿。**benchmark 只是 CPU advisory**:已下载 artifact 跨 `AVX512`/`AVX2`,SDPA 与 MoE 比率均随 runner 摆动;P3.2 最新 arm64 3.493×、x86 AVX2 2.511×,按能力类分组不能解释方差,GPU 退出门槛未答。**分支拓扑**(实测于 `0f6396e`):上游 PR #91 head 仍 `66c40bb`;fork `main` 领先 upstream 188、领先该 head 78,behind 0。日常提交不触碰 PR #91 head。**PR #1 之前的历史提交仍无 check-run**。
 
 ### 基础设施齐备度
 
 | 项 | 状态 |
 |---|---|
 | **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
-| pytest 守护 | ✅ **409 passed / 0 skipped**(PR #25 口径)· 警告计数 **3**:2 条 LoRA 外推 + README Usage 块正常触发的 P1.3 warning,**不是回归** |
+| pytest 守护 | ✅ **416 passed / 0 skipped**(PR #26 口径)· 警告计数 **3**:2 条 LoRA 外推 + README Usage 块正常触发的 P1.3 warning,**不是回归** |
 | 文档契约(tests/test_readme_claims.py) | ✅ **README 16 项契约 + 镜像一致性**:覆盖相对链接、preset 双向与表格逐 cell、Usage 真执行、训练入口/并行/精度、warmup/token/subset、badge 包名、AdamW、数据集、tokenizer、调度;删除未实现的 FlashAttention 2 声明, GradScaler 声明与实现双向断言。AGENTS/CLAUDE 规范化镜像由 `tests/test_instruction_mirror.py` 精确断言 |
-| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1146** stmts / 38 miss,2026-11-27 实测;`model.py`/`moe/ffn.py`/`moe/router.py` 100%)—— 超阶段 2 ≥70% 门槛,但行覆盖率不等于危险分支覆盖 |
-| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **24 条全绿**(实测于 `f9f2516`),trunk run [`45883521357`](https://github.com/Goinbit/OpenMythos/actions/runs/45883521357) 5/5、双腿 403 passed。PR #25 最终 run [`45885245047`](https://github.com/Goinbit/OpenMythos/actions/runs/45885245047) 5/5、双腿 409 passed。PR #1 之前历史提交仍无 check-run |
-| 性能证据(benchmarks/) | ✅ **有 CPU 读数,无 GPU 验收**:已下载 28 份 artifact(21 `AVX512` + 6 `AVX2` + 1 无 `cpu`),SDPA **1.223–2.125×**(15/28 ≥1.5),MoE **2.484–3.368×**(12/28 ≥3)。P3.2 grouped GEMM 最新本机 arm64 **3.493×**、CI `AVX2` **2.511×**,等价差 ~1e-7。实际为 seq256/bsz1/head8 CPU 微基准,不能证明规定 seq2048/bsz4/head16、显存或 3B GPU 门槛;判据只能按同坐标多次 run 分布 |
+| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1144** stmts / 38 miss,2026-11-27 实测;`model.py`/`moe/ffn.py`/`moe/router.py` 100%)—— 超阶段 2 ≥70% 门槛,但行覆盖率不等于危险分支覆盖 |
+| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **25 条全绿**(实测于 `0f6396e`),trunk run [`45885866871`](https://github.com/Goinbit/OpenMythos/actions/runs/45885866871) 5/5、双腿 409 passed。PR #26 run [`45911827462`](https://github.com/Goinbit/OpenMythos/actions/runs/45911827462) 5/5、双腿 416 passed。PR #1 之前历史提交仍无 check-run |
+| 性能证据(benchmarks/) | ✅ **有 CPU 读数,无 GPU 验收**:已下载 28 份 artifact(21 `AVX512` + 6 `AVX2` + 1 无 `cpu`),SDPA **1.223–2.125×**(15/28 ≥1.5),MoE **2.484–3.368×**(12/28 ≥3)。P3.2 grouped GEMM 最新本机 arm64 **3.493×**、CI `AVX2` **2.511×**,等价差 ~1e-7。P5.5 causal mask 本机 seq2048 分配元素 **8,388,608→0**、CI AVX2 seq256 **131,072→0**,输出 max diff 0;CPU 耗时比仅约 1.0–1.04×,收益是取消平方级分配。实际为 CPU 微基准,不能证明 32K 单卡训练、显存或 3B GPU 门槛;判据只能按同坐标多次 run 分布 |
 | mypy 类型检查 | ✅ **0 errors / 38 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
 | ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
 | pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
@@ -278,7 +278,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ---
 
-## 最近一轮重点(2026-11-27 · P0.2 fp16 动态 loss scaling;此前 P4.1 目录蓝图与 README 契约见日志)
+## 最近一轮重点(2026-11-27 · P5.5 长上下文本地部分;此前 fp16 GradScaler 与 P4.1 见日志)
 
 ### 当前批次
 - ACT:`2b4c66f` `[P1.2]` → PR [#12](https://github.com/Goinbit/OpenMythos/pull/12),已合入 `ead165f`;PR run `45855556139` / `45856424375` 与 trunk run `45856664827` 均 5/5,trunk 双腿 354 passed。
@@ -295,8 +295,9 @@ All work in this project must reference the phase/item below when opening a PR (
 - P4.2 main balance loss:`806c50e` → PR [#23](https://github.com/Goinbit/OpenMythos/pull/23),已合入 `99f21f6`;PR run `45880664143` / `45881406853` 与 trunk run `45881636942` 均 5/5,trunk 双腿 399 passed。
 - P4.1 module layout:`003c6ba` → PR [#24](https://github.com/Goinbit/OpenMythos/pull/24),代码 run [`45882617661`](https://github.com/Goinbit/OpenMythos/actions/runs/45882617661) 5/5、双腿 403 passed;trunk run [`45883521357`](https://github.com/Goinbit/OpenMythos/actions/runs/45883521357) 5/5;`generate.py` 与 `moe/` 包落地,公共导入/state_dict 不变。
 - P0.2 fp16 GradScaler:`a907a16` + `7d62548` + `c824032` → PR [#25](https://github.com/Goinbit/OpenMythos/pull/25),最终 run [`45885245047`](https://github.com/Goinbit/OpenMythos/actions/runs/45885245047) 5/5、双腿 409 passed;scale/unscale/裁剪/step/update 与 scaler checkpoint resume 已接通。
-- 测试:350 → **409 passed**;覆盖率 **97% / 1146 stmts / 38 miss**;mypy 0/38;ruff 全过。
-- 审计:Stage 0、P4.1 目录蓝图与 fp16 scaler 代码已完成;下一批可做 runbook/model card 契约,CUDA/FSDP 与 3B 门槛仍待硬件。
+- P5.5 long context:`e369fc2` → PR [#26](https://github.com/Goinbit/OpenMythos/pull/26),run [`45911827462`](https://github.com/Goinbit/OpenMythos/actions/runs/45911827462) 5/5、双腿 416 passed;平方 mask 分配归零,100B/500B/1T 预设降到 32K。
+- 测试:350 → **416 passed**;覆盖率 **97% / 1144 stmts / 38 miss**;mypy 0/38;ruff 全过。
+- 审计:P5.5 本地部分已完成;下一批可做 runbook/model card 契约,32K 单卡训练与真实 GPU 门槛仍待硬件。
 
 ### 历史交付总览 · OpenMythos 22 commits(实测于 `f731717`,口径 = `git log --no-merges --since=2026-11-08 --pretty=%h fork/main | wc -l`,不含 merge commit)+ QuantKB 11 commits
 
@@ -319,7 +320,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 | 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| OpenMythos 测试 | 246 | **409**(2026-11-27) | +163 |
+| OpenMythos 测试 | 246 | **416**(2026-11-27) | +170 |
 | 覆盖率 | 97% / 948 stmts | **97% / 1146 stmts / 38 miss** | 百分比持平,基数 +198 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
 | CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条全绿 main run(核对口径 `gh run list --branch main --event push`;已核 10 条,前 6 条 4/4、后 4 条 5/5;双腿同 `torch 2.12.0+cpu`,判定同为「全 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`」,passed 计数随合入前进(301 → 320 → 340 → 350,不在文档里钉死),自 `b8a604c` 起再加 benchmark artifact;该 artifact 八条 payload 实测跨 `AVX512`/`AVX2` 两个能力类,类内摆动 6.2%–17.4%、类间区间重叠且排序也不稳定** | 验证通道建立、持续、可复现且自证 |
@@ -366,6 +367,8 @@ All work in this project must reference the phase/item below when opening a PR (
 
 33. **动态 loss scaling 是训练状态,不是 backward 外的装饰** —— fp16 路径必须 `scale(loss)` → backward → `unscale_(optimizer)` → 全局梯度裁剪 → `scaler.step/update`;scaler 的 scale/growth tracker 必须随 checkpoint roundtrip,否则 resume 会重置保护。新旧 torch 的 GradScaler 构造签名不同(新版首参 `device_type`,旧版首参 `init_scale`),兼容工厂不能只做名称替换。
 
+34. **长上下文优化必须同时证数值与分配路径** —— P5.5 不再构造 `(1,1,T,T)` additive mask,而是把 causal 意图显式传给 SDPA;旧 `mask` API 保留为兼容入口。验收同时钉 GQA/MLA 与旧 mask 等价、完整前向 `torch.full` 零调用、benchmark mask 算子/元素归零。CPU 耗时接近持平也要如实报告:该改动消除的是平方级显存,不是保证 attention 计算加速。
+
 ---
 
 ## 下一轮候选(按可行性)
@@ -383,7 +386,7 @@ All work in this project must reference the phase/item below when opening a PR (
 - **P5.2 Expert Parallelism** — MoE `all_to_all` 跨 rank · 256 专家线性扩展 ≥75%
 - **P5.3 Activation Checkpointing 实装扩展** — P3.8 已挂接 CPU 路径 · GPU 验证 FSDP 交互与内存收益
 - **P5.4 Paged KV Cache** — 扩展 `StaticKVCache` 设计支持 8K+ decode · vLLM PagedAttention 兼容
-- **P5.5 长上下文 32K+** — 移除 `_causal_mask` 显式分配 · `variants.py` 中 `max_seq_len=1_000_000` 降级
+- **P5.5 长上下文 32K+** — 本地部分已完成:平方 mask 移除、100B/500B/1T 预设降为 32K;剩余为 seq_len=32K 单卡可训练与真实显存/吞吐验收。
 - **fp16 GradScaler CUDA 验证** — 代码与 CPU 回归已落地;需在真实 fp16 GPU 上验证梯度下溢恢复、scale 动态调整、FSDP 全 rank 行为与 checkpoint resume。bf16 路径保持 scaler disabled。
 
 ### 🟢 本地可做 · 按审计优先级推进
@@ -453,6 +456,32 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-27 · P5.5 长上下文本地部分:平方 mask 分配归零 + 32K 预设治理
+
+**分支:** OpenMythos `perf/p55-long-context-local`(自 fork `main` `0f6396e` 起)· **commits:** `e369fc2` + 本条目 docs 提交 → PR [#26](https://github.com/Goinbit/OpenMythos/pull/26);代码 run [`45911827462`](https://github.com/Goinbit/OpenMythos/actions/runs/45911827462) **5/5 success**,双腿 416 passed
+**Agents:** 无 · **完成 IDs:** **P5.5**(本地 mask/预设部分;32K 单卡 GPU 验收待硬件)
+**约束执行:** 只动 fork 短分支与 fork 内 PR;上游 PR #91 head 仍 `66c40bb`;未 squash、未删 head 分支。
+
+### ✅ 完成
+- [open_mythos/model.py:102-168](file:///Users/macos/Desktop/Claude/OpenMythos/open_mythos/model.py#L102-L168) 删除 `_causal_mask`,Prelude/recurrent/Coda 统一传 `causal=True`;decode 仍按 `T_q != T_kv` 自动关闭 causal。
+- [open_mythos/attention/gqa.py:59-107](file:///Users/macos/Desktop/Claude/OpenMythos/open_mythos/attention/gqa.py#L59-L107) 与 [open_mythos/attention/mla.py:95-160](file:///Users/macos/Desktop/Claude/OpenMythos/open_mythos/attention/mla.py#L95-L160) 新增显式 `causal` 参数;`None` 时保留旧 mask-presence 语义,`AttentionProtocol` 同步。
+- [open_mythos/variants.py:146-223](file:///Users/macos/Desktop/Claude/OpenMythos/open_mythos/variants.py#L146-L223) 将 100B/500B/1T 的 `max_seq_len` 与 `max_output_tokens` 从 1M/128K 降为 32768;README 表与 API walkthrough 同步。
+- [benchmarks/recurrent_bench.py:64-79](file:///Users/macos/Desktop/Claude/OpenMythos/benchmarks/recurrent_bench.py#L64-L79) 与 [benchmarks/recurrent_bench.py:222-259](file:///Users/macos/Desktop/Claude/OpenMythos/benchmarks/recurrent_bench.py#L222-L259) 新增旧 mask/新 SDPA 孪生 benchmark,先证等价再报算子数与分配元素。
+
+### 📊 测试变化
+- before:409 passed / 0 skipped / 3 warnings → after:**416 passed / 0 skipped / 3 warnings**(+7)
+- 覆盖率 **97% / 1144 stmts / 38 miss**;`model.py`/`mla.py`/`protocol.py` 100%;mypy **0 errors / 38 files**;ruff 全过
+- 本机 arm64 seq2048:base/fast **22.49/21.65ms**(1.039×),max diff 0,mask 元素 **8,388,608→0**(约 32MiB);CI x86 AVX2 seq256:**9.814/9.760ms**(1.006×),max diff 0,元素 **131,072→0**
+- 通道内证据:PR #26 run `45911827462` **5/5**,pytest 双腿、mypy、ruff、advisory benchmark 全 success
+
+### 🔑 关键决策 / 发现
+- **显式 causal 标志兼顾优化与兼容**:模型不再分配 mask,但旧 `mask=` 调用仍按 presence 推断 causal;新增 `causal=` 可覆盖旧语义。
+- **分配收益不等于 CPU 加速**:seq2048 仅快约 3.9%,但取消两次 `T²` float32 分配;32K 理论可取消约 8GiB mask 元素。
+- **32K 预设治理不等于 32K 可训练**:真实单卡显存/吞吐仍待 GPU;torch 2.2.2 上 attention 新回归通过,完整模型仍受既有 `F.grouped_mm` 缺失限制。
+
+### 🧭 留到下阶段
+- runbook/model card 可执行子集契约;32K 单卡训练、真实 NCCL/FSDP 与 3B GPU 门槛。
 
 ## 2026-11-27 · P0.2 fp16 动态 loss scaling:Trainer 与 checkpoint resume 接通
 
