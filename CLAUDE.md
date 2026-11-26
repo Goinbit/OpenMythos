@@ -246,7 +246,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 | Stage | 状态 | 备注 |
 |---|---|---|
-| Stage 0 紧急修复 | 🟡 基本完成 | P0.2/P0.3 已有生产回归;P0.3 修复 fp16 全零 topk NaN,P0.1 指定 `test_public_api_importable` 仍缺 |
+| Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部;公共 star import、NaN/Inf loss/梯度、fp16 全零 topk 均有生产回归 |
 | Stage 1 契约硬化 | 🟡 部分完成 | P1.2 已冻结 halted hidden/KV 并归一剩余权重;采用保守门控,未减少 dense Transformer flops |
 | Stage 2 回归测试补齐 | 🟡 数量达标、强度不均 | 现测 **373 passed**;生产 checkpoint/optimizer roundtrip、多 worker seed、MoE 前向/逐参数梯度等价已有证据 |
 | Stage 3 性能融合 | 🔴 验收未闭环 | P3.2/P3.3/P3.5/P3.7 实现与本地证据已落地;P3.7 本机 7.167×、CI 5.818×。P3.5 CPU 计时仅 ~1.0×,−15% 与 GPU/规定形状/显存/3B 仍未验 |
@@ -264,10 +264,10 @@ All work in this project must reference the phase/item below when opening a PR (
 | 项 | 状态 |
 |---|---|
 | **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
-| pytest 守护 | ✅ **392 passed / 0 skipped**(PR #21 口径)· 警告计数 **3**:2 条 LoRA 外推 + README Usage 块正常触发的 P1.3 warning,**不是回归** |
+| pytest 守护 | ✅ **394 passed / 0 skipped**(PR #22 口径)· 警告计数 **3**:2 条 LoRA 外推 + README Usage 块正常触发的 P1.3 warning,**不是回归** |
 | 文档契约(tests/test_readme_claims.py) | ✅ **README 16 项契约 + 镜像一致性**:覆盖相对链接、preset 双向与表格逐 cell、Usage 真执行、训练入口/并行/精度、warmup/token/subset、badge 包名、AdamW、数据集、tokenizer、调度;删除未实现的 FlashAttention 2 声明, GradScaler 反向声明加固。AGENTS/CLAUDE 规范化镜像由 `tests/test_instruction_mirror.py` 精确断言 |
 | 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1106** stmts / 37 miss,2026-11-27 实测;`model.py` 99%、`kv_cache.py` 95%)—— 超阶段 2 ≥70% 门槛,但行覆盖率不等于危险分支覆盖 |
-| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **20 条全绿**(实测于 `e40455a`),最新 run [`45876198740`](https://github.com/Goinbit/OpenMythos/actions/runs/45876198740) 5/5、双腿 391 passed。PR #21 最终 run [`45877597819`](https://github.com/Goinbit/OpenMythos/actions/runs/45877597819) 5/5、双腿 392 passed。PR #1 之前历史提交仍无 check-run |
+| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **21 条全绿**(实测于 `07d96bf`),最新 run [`45878225944`](https://github.com/Goinbit/OpenMythos/actions/runs/45878225944) 5/5、双腿 392 passed。PR #22 代码 run [`45878776072`](https://github.com/Goinbit/OpenMythos/actions/runs/45878776072) 5/5、双腿 394 passed。PR #1 之前历史提交仍无 check-run |
 | 性能证据(benchmarks/) | ✅ **有 CPU 读数,无 GPU 验收**:已下载 28 份 artifact(21 `AVX512` + 6 `AVX2` + 1 无 `cpu`),SDPA **1.223–2.125×**(15/28 ≥1.5),MoE **2.484–3.368×**(12/28 ≥3)。P3.2 grouped GEMM 最新本机 arm64 **3.493×**、CI `AVX2` **2.511×**,等价差 ~1e-7。实际为 seq256/bsz1/head8 CPU 微基准,不能证明规定 seq2048/bsz4/head16、显存或 3B GPU 门槛;判据只能按同坐标多次 run 分布 |
 | mypy 类型检查 | ✅ **0 errors / 35 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
 | ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
@@ -290,9 +290,10 @@ All work in this project must reference the phase/item below when opening a PR (
 - P3.5 ACT sync:`82e783d` → PR [#18](https://github.com/Goinbit/OpenMythos/pull/18),已合入 `b7cae72`;PR run `45872280046` / `45872863443` 与 trunk run `45873121873` 均 5/5,trunk 双腿 382 passed。
 - P3.7 loop embedding:`fa1ed48` → PR [#19](https://github.com/Goinbit/OpenMythos/pull/19),已合入 `6ab66ca`;PR run `45873742577` / `45874246546` 与 trunk run `45874496343` 均 5/5,trunk 双腿 384 passed。
 - 文档闸:`1a69f43` → PR [#20](https://github.com/Goinbit/OpenMythos/pull/20),已合入 `e40455a`;PR run `45875368515` / `45875973315` 与 trunk run `45876198740` 均 5/5,trunk 双腿 391 passed。
-- P0.3 zero-topk:`44b1d58` + 2 个跨平台测试修正 → PR [#21](https://github.com/Goinbit/OpenMythos/pull/21),最终 run [`45877597819`](https://github.com/Goinbit/OpenMythos/actions/runs/45877597819) 5/5、双腿 392 passed;fp16 全零 topk 输出有限且归一。
-- 测试:350 → **392 passed**;覆盖率 **97% / 1106 stmts**;mypy 0/35;ruff 全过。
-- 审计:Stage 0 仅剩 P0.1 指定公共 API 测试;本地可做项继续收口,GPU 与 fp16 scaler 仍待硬件。
+- P0.3 zero-topk:`44b1d58` + 2 个跨平台测试修正 → PR [#21](https://github.com/Goinbit/OpenMythos/pull/21),已合入 `07d96bf`;最终 PR run `45877597819` / `45878029444` 与 trunk run `45878225944` 均 5/5,trunk 双腿 392 passed。
+- P0.1 public API:`dfa37dc` → PR [#22](https://github.com/Goinbit/OpenMythos/pull/22),代码 run [`45878776072`](https://github.com/Goinbit/OpenMythos/actions/runs/45878776072) 5/5、双腿 394 passed;Stage 0 验收缺口关闭。
+- 测试:350 → **394 passed**;覆盖率 **97% / 1106 stmts**;mypy 0/35;ruff 全过。
+- 审计:Stage 0 已完成;下一批可做 runbook/model card 契约或 P4.1 目录蓝图收口,GPU 与 fp16 scaler 仍待硬件。
 
 ### 历史交付总览 · OpenMythos 22 commits(实测于 `f731717`,口径 = `git log --no-merges --since=2026-11-08 --pretty=%h fork/main | wc -l`,不含 merge commit)+ QuantKB 11 commits
 
@@ -315,7 +316,7 @@ All work in this project must reference the phase/item below when opening a PR (
 
 | 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| OpenMythos 测试 | 246 | **392**(2026-11-27) | +146 |
+| OpenMythos 测试 | 246 | **394**(2026-11-27) | +148 |
 | 覆盖率 | 97% / 948 stmts | **97% / 1106 stmts / 37 miss** | 百分比持平,基数 +158 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
 | CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条全绿 main run(核对口径 `gh run list --branch main --event push`;已核 10 条,前 6 条 4/4、后 4 条 5/5;双腿同 `torch 2.12.0+cpu`,判定同为「全 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`」,passed 计数随合入前进(301 → 320 → 340 → 350,不在文档里钉死),自 `b8a604c` 起再加 benchmark artifact;该 artifact 八条 payload 实测跨 `AVX512`/`AVX2` 两个能力类,类内摆动 6.2%–17.4%、类间区间重叠且排序也不稳定** | 验证通道建立、持续、可复现且自证 |
@@ -356,6 +357,7 @@ All work in this project must reference the phase/item below when opening a PR (
 27. **loop embedding 预计算必须同时证明数值与分配路径** —— P3.7 的 table 不是只存一份常量就完事:测试逐行对照动态 `loop_index_embedding`,benchmark 比较同输入动态计算 vs table 索引,源码断言 forward 不再出现 `loop_index_embedding`/`torch.cat`/`torch.arange`。本机 7.167×、CI AVX512 5.818×,max diff 0;三方证据共同证明“既等价又不在 forward 临时构造”。
 28. **文档闸要覆盖“数字/机制/镜像”三类不同谎言** —— README 契约扩展到 preset 表逐 cell、AdamW/数据集/tokenizer/调度对源、FlashAttention 2 与 GradScaler 反向声明;AGENTS/CLAUDE 则用规范化 round-trip 精确比较。文本检索只能证明字符串存在,配置对源与镜像等式才能证明声明仍与实现同步。
 29. **fp16 的数值保护不能只在 fp16 里做** —— P0.3 原实现 `clamp(min=1e-9)` 在 fp16 中直接下溢为 0,全零 topk 仍产生 NaN。归一化提升到 fp32,分母为 0 时回退到选中 experts 的均匀权重;测试强制 softmax 选中全零概率 expert。跨平台夹具还要避免 topk 并列顺序假设,只比较选中集合。
+30. **公共 API 回归必须同时测进程内与干净子进程** —— P0.1 的 `from open_mythos import *` 既验证 `__all__` 每个符号与包属性同一对象,也用独立 Python 进程复现用户导入动作;只 import 包本身会漏掉 star-import 的幽灵导出。
 
 ---
 
@@ -444,6 +446,28 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-27 · P0.1 公共 API star import 回归,Stage 0 验收关闭
+
+**分支:** OpenMythos `test/p01-public-api`(自 fork `main` `07d96bf` 起)· **commits:** `dfa37dc` + 本条目 docs 提交 → PR [#22](https://github.com/Goinbit/OpenMythos/pull/22);代码 run [`45878776072`](https://github.com/Goinbit/OpenMythos/actions/runs/45878776072) **5/5 success**,双腿 394 passed
+**Agents:** 无 · **完成 IDs:** **P0.1**(Stage 0 P0.1-P0.5 全部关闭)
+**约束执行:** 只动 fork 短分支与 fork 内 PR;上游 PR #91 head 仍 `66c40bb`;未 squash、未删 head 分支。
+
+### ✅ 完成
+- [tests/test_public_api.py:10-16](file:///Users/macos/Desktop/Claude/OpenMythos/tests/test_public_api.py#L10-L16) 新增计划指定的 `test_public_api_importable`,进程内执行 star import 并逐项验证 `__all__` 与包属性同一对象。
+- [tests/test_public_api.py:18-25](file:///Users/macos/Desktop/Claude/OpenMythos/tests/test_public_api.py#L18-L25) 独立子进程执行 `from open_mythos import *`,复现用户导入动作并捕获 stderr。
+
+### 📊 测试变化
+- before:392 passed / 0 skipped / 3 warnings → after:**394 passed / 0 skipped / 3 warnings**(+2)
+- 覆盖率维持 **97% / 1106 stmts**;mypy **0 errors / 35 files**;ruff 全过
+- 通道内证据:PR #22 代码 run `45878776072` **5/5**,pytest 双腿、mypy、ruff、advisory benchmark 全 success
+
+### 🔑 关键决策 / 发现
+- **star import 不能只测 `import open_mythos`**:幽灵导出只在 `__all__` 展开时触发;进程内对象 identity + 干净子进程两条证据互补。
+- **Stage 0 完成口径恢复**:P0.1/P0.3 指定回归补齐后,Stage 0 不再保留“基本完成”保留意见。
+
+### 🧭 留到下阶段
+- 本地候选:runbook/model card 可执行子集、P4.1 目录蓝图收口;GPU、fp16 GradScaler、NCCL/FSDP 与 3B 门槛仍待硬件。
 
 ## 2026-11-27 · P0.3 fp16 全零 topk:clamp 下溢修复与跨平台回归
 
