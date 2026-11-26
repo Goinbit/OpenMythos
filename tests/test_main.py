@@ -1670,6 +1670,12 @@ class TestLoRAPerformance:
 
 
 class TestLoopIndexPerformance:
+    def test_forward_source_has_no_loop_embedding_allocation(self):
+        source = inspect.getsource(RecurrentBlock.forward)
+        assert "loop_index_embedding(" not in source
+        assert "torch.cat" not in source
+        assert "torch.arange" not in source
+
     def test_precomputed_loop_emb_matches_standalone_function(self):
         torch.manual_seed(0)
         cfg = gqa_cfg()

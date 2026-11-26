@@ -12,7 +12,7 @@ import torch
 from torch.utils._python_dispatch import TorchDispatchMode
 
 from open_mythos import MythosConfig, OpenMythos, RecurrentBlock
-from open_mythos.primitives.rope import precompute_rope_freqs
+from open_mythos.primitives.rope import loop_index_embedding, precompute_rope_freqs
 
 
 def _cfg() -> MythosConfig:
@@ -177,6 +177,29 @@ def bench_generate_sync(n_loops: int = 8, max_new_tokens: int = 2) -> dict:
     }
 
 
+@torch.no_grad()
+def bench_loop_embedding(repeat: int = 3) -> dict:
+    block = RecurrentBlock(_cfg())
+    h = torch.randn(1, 4, block.cfg.dim)
+    loop_t = block.cfg.max_loop_iters - 1
+
+    def reference():
+        return loop_index_embedding(h, loop_t, block.loop_dim)
+
+    def cached():
+        return h + block.loop_idx_table[loop_t].view(1, 1, -1)
+
+    max_diff = float((reference() - cached()).abs().max())
+    base_ms = _timed_ms(reference, repeat)
+    fast_ms = _timed_ms(cached, repeat)
+    return {
+        "base_ms": base_ms,
+        "fast_ms": fast_ms,
+        "ratio": base_ms / fast_ms,
+        "max_diff": max_diff,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeat", type=int, default=3)
@@ -194,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         "act_sync": bench_act_sync(),
         "generate_sync": bench_generate_sync(),
         "act_timing": bench_act_timing(repeat=args.repeat),
+        "loop_embedding": bench_loop_embedding(repeat=args.repeat),
     }
     print("[recurrent-bench] " + json.dumps(payload), flush=True)
     if args.json:
