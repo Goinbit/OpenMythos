@@ -1,4 +1,8 @@
+import copy
+import inspect
+
 import torch
+import torch.nn.functional as F
 import pytest
 from open_mythos.main import (
     ACTHalting,
@@ -367,9 +371,8 @@ class TestMoEFFN:
 
     def test_shared_experts_always_fire(self):
         # Zero out all routed experts; output should still be nonzero from shared
-        for exp in self.moe.routed_experts:
-            for p in exp.parameters():
-                p.data.zero_()
+        for parameter in self.moe.routed_experts.parameters():
+            parameter.data.zero_()
         x = torch.randn(B, T, self.cfg.dim)
         out = self.moe(x)
         assert out.abs().sum() > 0
@@ -878,7 +881,7 @@ class TestACTRegression:
         )
         assert h.grad is not None and torch.isfinite(h.grad).all()
         assert e.grad is not None and torch.isfinite(e.grad).all()
-        assert self.block.block.ffn.routed_experts[0].gate.weight.grad is not None
+        assert self.block.block.ffn.routed_experts.gate_weight.grad is not None
         assert self.block.lora.B.grad is not None
         assert self.block.injection.B.grad is not None
         assert self.block.act.halt.weight.grad is not None
@@ -1415,38 +1418,108 @@ class TestSDPAEquivalence:
 
 
 class TestMoEVectorized:
-    def test_vectorized_moe_matches_reference(self):
-        """Compare vectorized forward against a straightforward per-token reference."""
-        torch.manual_seed(0)
-        cfg = gqa_cfg(n_experts=4, n_experts_per_tok=2, expert_dim=16)
-        moe = MoEFFN(cfg).eval()
-        x = torch.randn(2, 5, cfg.dim)
+    @staticmethod
+    def _reference_expert(moe: MoEFFN, expert_id: int, x: torch.Tensor) -> torch.Tensor:
+        experts = moe.routed_experts
+        gate = F.linear(x, experts._effective_weight(experts.gate_weight)[expert_id])
+        up = F.linear(x, experts._effective_weight(experts.up_weight)[expert_id])
+        down = F.linear(
+            F.silu(gate) * up,
+            experts._effective_weight(experts.down_weight)[expert_id],
+        )
+        return down
 
-        out = moe(x)
-
-        # Reference: for every token, compute top-K experts by the same
-        # algorithm the module uses, then sum weighted expert outputs + shared.
-        B, T, D = x.shape
-        flat = x.view(B * T, D)
-        # Stage 4.3: moe.router is a BiasRouter module, not raw nn.Linear.
-        # Reach through to .linear and .router_bias for the reference path.
+    @staticmethod
+    def _reference(moe: MoEFFN, x: torch.Tensor) -> torch.Tensor:
+        batch, length, dim = x.shape
+        flat = x.reshape(batch * length, dim)
         logits = moe.router.linear(flat)
         scores = torch.softmax(logits, dim=-1)
         _, topk_idx = (logits + moe.router.router_bias).topk(moe.topk, dim=-1)
         topk_scores = scores.gather(-1, topk_idx)
-        topk_scores = topk_scores / topk_scores.sum(dim=-1, keepdim=True).clamp(min=1e-9)
-
+        topk_scores = topk_scores / topk_scores.sum(
+            dim=-1, keepdim=True
+        ).clamp(min=1e-9)
         ref = torch.zeros_like(flat)
-        for n in range(flat.shape[0]):
-            for k in range(moe.topk):
-                eid = topk_idx[n, k].item()
-                w = topk_scores[n, k]
-                ref[n] = ref[n] + w * moe.routed_experts[eid](flat[n : n + 1]).squeeze(0)
+        for token in range(flat.shape[0]):
+            for slot in range(moe.topk):
+                expert_id = topk_idx[token, slot].item()
+                ref[token] = ref[token] + topk_scores[token, slot] * (
+                    TestMoEVectorized._reference_expert(
+                        moe, expert_id, flat[token : token + 1]
+                    ).squeeze(0)
+                )
         for shared in moe.shared_experts:
             ref = ref + shared(flat)
-        ref = ref.view(B, T, D)
+        return ref.reshape(batch, length, dim)
 
-        torch.testing.assert_close(out, ref, atol=1e-5, rtol=1e-5)
+    def test_vectorized_moe_matches_reference(self):
+        torch.manual_seed(0)
+        cfg = gqa_cfg(n_experts=4, n_experts_per_tok=2, expert_dim=16)
+        moe = MoEFFN(cfg).eval()
+        x = torch.randn(2, 5, cfg.dim)
+        torch.testing.assert_close(moe(x), self._reference(moe, x), atol=1e-5, rtol=1e-5)
+
+    def test_grouped_moe_gradients_match_reference(self):
+        torch.manual_seed(0)
+        cfg = gqa_cfg(n_experts=4, n_experts_per_tok=2, expert_dim=16)
+        grouped = MoEFFN(cfg).train()
+        reference = copy.deepcopy(grouped).train()
+        x_grouped = torch.randn(2, 5, cfg.dim, requires_grad=True)
+        x_reference = x_grouped.detach().clone().requires_grad_(True)
+        grad_output = torch.randn(2, 5, cfg.dim)
+
+        grouped(x_grouped).backward(grad_output)
+        self._reference(reference, x_reference).backward(grad_output)
+
+        torch.testing.assert_close(
+            x_grouped.grad, x_reference.grad, atol=1e-5, rtol=1e-5
+        )
+        grouped_params = dict(grouped.named_parameters())
+        reference_params = dict(reference.named_parameters())
+        assert grouped_params.keys() == reference_params.keys()
+        for name, parameter in grouped_params.items():
+            expected = reference_params[name].grad
+            assert parameter.grad is not None, name
+            assert expected is not None, name
+            torch.testing.assert_close(parameter.grad, expected, atol=1e-5, rtol=1e-5, msg=name)
+
+    def test_grouped_moe_handles_empty_expert_groups(self):
+        torch.manual_seed(0)
+        cfg = gqa_cfg(n_experts=8, n_experts_per_tok=1, expert_dim=16)
+        moe = MoEFFN(cfg).eval()
+        x = torch.randn(1, 3, cfg.dim)
+        with torch.no_grad():
+            moe.router.linear.weight.zero_()
+            moe.router.router_bias.copy_(torch.arange(8, dtype=x.dtype))
+        out = moe(x)
+        assert out.shape == x.shape
+        assert torch.isfinite(out).all()
+
+    def test_grouped_moe_pads_unaligned_dimensions(self):
+        torch.manual_seed(0)
+        cfg = gqa_cfg(n_experts=4, n_experts_per_tok=2, expert_dim=10)
+        moe = MoEFFN(cfg).eval()
+        x = torch.randn(2, 5, cfg.dim)
+        torch.testing.assert_close(moe(x), self._reference(moe, x), atol=1e-5, rtol=1e-5)
+
+    def test_grouped_moe_bf16_autocast_backward(self):
+        torch.manual_seed(0)
+        cfg = gqa_cfg(n_experts=4, n_experts_per_tok=2, expert_dim=16)
+        moe = MoEFFN(cfg).train()
+        x = torch.randn(2, 5, cfg.dim, requires_grad=True)
+        with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+            out = moe(x)
+            loss = out.float().square().mean()
+        loss.backward()
+        assert torch.isfinite(x.grad).all()
+        assert torch.isfinite(moe.routed_experts.gate_weight.grad).all()
+
+    def test_production_dispatch_has_no_expert_loop_or_host_sync(self):
+        source = inspect.getsource(MoEFFN.forward)
+        assert "for eid in range" not in source
+        assert ".tolist()" not in source
+        assert ".item()" not in source
 
     def test_moe_gradient_flow(self):
         """Gradient must reach every routed expert's weight through the vectorized path."""
@@ -1456,10 +1529,13 @@ class TestMoEVectorized:
         x = torch.randn(2, 4, cfg.dim, requires_grad=False)
         out = moe(x)
         out.sum().backward()
-        for i, expert in enumerate(moe.routed_experts):
-            assert expert.gate.weight.grad is not None, f"expert {i} gate grad is None"
-            assert expert.up.weight.grad is not None, f"expert {i} up grad is None"
-            assert expert.down.weight.grad is not None, f"expert {i} down grad is None"
+        experts = moe.routed_experts
+        assert experts.gate_weight.grad is not None
+        assert experts.up_weight.grad is not None
+        assert experts.down_weight.grad is not None
+        assert torch.isfinite(experts.gate_weight.grad).all()
+        assert torch.isfinite(experts.up_weight.grad).all()
+        assert torch.isfinite(experts.down_weight.grad).all()
 
 
 # ---------------------------------------------------------------------------
