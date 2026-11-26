@@ -92,6 +92,7 @@ class MLAttention(nn.Module):
         mask: Optional[torch.Tensor] = None,
         kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         cache_key: str = "default",
+        causal: Optional[bool] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -100,6 +101,7 @@ class MLAttention(nn.Module):
             mask      -- additive causal mask of shape (1, 1, T, S) or None
             kv_cache  -- dict mutated in-place; stores {"c_kv": ..., "k_rope": ...}
             cache_key -- unique key identifying this layer in the cache dict
+            causal   -- explicit causal flag; when None, legacy mask presence is used
 
         Returns:
             Output tensor of shape (B, T, dim)
@@ -153,7 +155,9 @@ class MLAttention(nn.Module):
         k = k.transpose(1, 2)  # (B, H, S, q_head_dim)
         v = v.transpose(1, 2)  # (B, H, S, v_dim)
 
-        is_causal = (mask is not None) and (q.shape[-2] == k.shape[-2]) and (q.shape[-2] > 1)
+        if causal is None:
+            causal = mask is not None
+        is_causal = causal and (q.shape[-2] == k.shape[-2]) and (q.shape[-2] > 1)
         dropout_p = self.attn_drop.p if self.training else 0.0
 
         out = F.scaled_dot_product_attention(

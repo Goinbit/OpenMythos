@@ -56,6 +56,7 @@ class GQAttention(nn.Module):
         mask: Optional[torch.Tensor] = None,
         kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         cache_key: str = "default",
+        causal: Optional[bool] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -64,6 +65,7 @@ class GQAttention(nn.Module):
             mask      -- additive causal mask of shape (1, 1, T, S) or None
             kv_cache  -- dict mutated in-place; stores {"k": ..., "v": ...} per cache_key
             cache_key -- unique key identifying this layer in the cache dict
+            causal   -- explicit causal flag; when None, legacy mask presence is used
 
         Returns:
             Output tensor of shape (B, T, dim)
@@ -100,7 +102,9 @@ class GQAttention(nn.Module):
         # Causal mask only applies during prefill (T_q == T_kv). During decode
         # with a cached KV the new query (T_q=1) attends over everything, so
         # no mask is required.
-        is_causal = (mask is not None) and (q.shape[-2] == k.shape[-2]) and (q.shape[-2] > 1)
+        if causal is None:
+            causal = mask is not None
+        is_causal = causal and (q.shape[-2] == k.shape[-2]) and (q.shape[-2] > 1)
         dropout_p = self.attn_drop.p if self.training else 0.0
 
         try:

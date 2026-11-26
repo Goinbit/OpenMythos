@@ -144,15 +144,15 @@ def mythos_50b() -> MythosConfig:
 
 
 def mythos_100b() -> MythosConfig:
-    """100B parameter config. Frontier-class model. dim=8192, 256 experts, 32 loop iters, 1M context, 128k output."""
+    """100B parameter config. Frontier-class model. dim=8192, 256 experts, 32 loop iters, 32k context, 32k output."""
     return MythosConfig(
         vocab_size=32000,
         dim=8192,
-        max_seq_len=1000000,
+        max_seq_len=32768,
         prelude_layers=4,
         coda_layers=4,
         rope_theta=1000000.0,
-        max_output_tokens=131072,
+        max_output_tokens=32768,
         attention=AttentionConfig(
             attn_type="mla",
             n_heads=64,
@@ -178,15 +178,15 @@ def mythos_100b() -> MythosConfig:
 
 
 def mythos_500b() -> MythosConfig:
-    """500B parameter config. Ultra-scale MoE model. dim=12288, 512 experts, 48 loop iters, 1M context, 128k output."""
+    """500B parameter config. Ultra-scale MoE model. dim=12288, 512 experts, 48 loop iters, 32k context, 32k output."""
     return MythosConfig(
         vocab_size=100000,
         dim=12288,
-        max_seq_len=1000000,
+        max_seq_len=32768,
         prelude_layers=4,
         coda_layers=4,
         rope_theta=1000000.0,
-        max_output_tokens=131072,
+        max_output_tokens=32768,
         attention=AttentionConfig(
             attn_type="mla",
             n_heads=96,
@@ -212,15 +212,15 @@ def mythos_500b() -> MythosConfig:
 
 
 def mythos_1t() -> MythosConfig:
-    """1T parameter config. Maximum scale. dim=16384, 512 experts, 64 loop iters, 1M context, 128k output."""
+    """1T parameter config. Maximum scale. dim=16384, 512 experts, 64 loop iters, 32k context, 32k output."""
     return MythosConfig(
         vocab_size=100000,
         dim=16384,
-        max_seq_len=1000000,
+        max_seq_len=32768,
         prelude_layers=6,
         coda_layers=6,
         rope_theta=2000000.0,
-        max_output_tokens=131072,
+        max_output_tokens=32768,
         attention=AttentionConfig(
             attn_type="mla",
             n_heads=128,

@@ -56,6 +56,7 @@ class TransformerBlock(nn.Module):
         kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         cache_key: str = "default",
         return_balance_loss: bool = False,
+        causal: Optional[bool] = None,
     ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         """
         Args:
@@ -65,12 +66,13 @@ class TransformerBlock(nn.Module):
             kv_cache  -- cache dict mutated in-place by the attention layer
             cache_key -- key identifying this layer in the cache
             return_balance_loss -- opt in to returning the scaled MoE balance loss
+            causal   -- explicit causal flag; None preserves legacy mask semantics
 
         Returns:
             Output tensor, or ``(output, balance_loss)`` when requested.
         """
         x = x + self.resid_drop(
-            self.attn(self.attn_norm(x), freqs_cis, mask, kv_cache, cache_key)
+            self.attn(self.attn_norm(x), freqs_cis, mask, kv_cache, cache_key, causal=causal)
         )
         ffn_input = self.ffn_norm(x)
         if return_balance_loss:

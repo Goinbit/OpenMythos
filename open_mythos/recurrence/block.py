@@ -94,6 +94,7 @@ class RecurrentBlock(nn.Module):
         n_loops: Optional[int] = None,
         kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         return_balance_loss: bool = False,
+        causal: Optional[bool] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Run the recurrent loop for up to n_loops iterations with ACT early exit.
@@ -109,6 +110,7 @@ class RecurrentBlock(nn.Module):
                         each loop iteration uses a separate cache key
             return_balance_loss -- opt in to returning the sum of per-loop MoE
                                    balance losses
+            causal   -- explicit causal flag; None preserves legacy mask semantics
 
         Returns:
             ACT-weighted hidden states, or ``(hidden_states, balance_loss)``.
@@ -142,10 +144,13 @@ class RecurrentBlock(nn.Module):
                     kv_cache,
                     cache_key,
                     return_balance_loss=True,
+                    causal=causal,
                 )
                 balance_loss = balance_loss + loop_balance
             else:
-                trans_out = self.block(combined, freqs_cis, mask, kv_cache, cache_key)
+                trans_out = self.block(
+                    combined, freqs_cis, mask, kv_cache, cache_key, causal=causal
+                )
             trans_out = trans_out + self.lora(trans_out, t)
             trans_out = torch.where(running_mask, trans_out, torch.zeros_like(trans_out))
             h = torch.where(running_mask, self.injection(h, e, trans_out), h)

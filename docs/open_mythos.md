@@ -157,26 +157,22 @@ Single forward pass through the full Prelude → Recurrent Block → Coda pipeli
 
 ```
 1. Embed:     x = embedding(input_ids)              # (B, T, dim)
-2. Select RoPE buffer:
-     if attn_type == "mla": use freqs_cis_mla[:T]
-     else:                   use freqs_cis[:T]
-3. Build causal mask (upper-triangular -inf):
-     if T > 1: mask = _causal_mask(T, device)
-     else:     mask = None  (single-token decode step)
-4. Prelude:
+2. Select the single precomputed RoPE buffer:
+     freqs_cis = self.freqs_cis[start_pos:start_pos + T]
+3. Prelude (SDPA uses is_causal=True; no dense mask is allocated):
      for i, layer in prelude:
-         x = layer(x, freqs_cis, mask, kv_cache, f"prelude_{i}")
-5. Freeze encoded input:
+         x = layer(x, freqs_cis, None, kv_cache, cache_key=f"prelude_{i}", causal=True)
+4. Freeze encoded input:
      e = x                                          # (B, T, dim)
-6. Recurrent loop:
-     x = recurrent(x, e, freqs_cis, mask, n_loops, kv_cache)
-7. Coda:
+5. Recurrent loop (same causal flag every iteration):
+     x = recurrent(x, e, freqs_cis, None, n_loops, kv_cache, causal=True)
+6. Coda:
      for i, layer in coda:
-         x = layer(x, freqs_cis, mask, kv_cache, f"coda_{i}")
-8. Project:   logits = lm_head(norm(x))             # (B, T, vocab_size)
+         x = layer(x, freqs_cis, None, kv_cache, cache_key=f"coda_{i}", causal=True)
+7. Project:   logits = lm_head(norm(x))             # (B, T, vocab_size)
 ```
 
-**Step 5 (freeze `e`)** is the key architectural invariant: the encoded input `e` is captured after the Prelude and injected at *every* loop iteration unchanged. This prevents the hidden state from drifting away from the original input signal regardless of loop depth.
+**Step 4 (freeze `e`)** is the key architectural invariant: the encoded input `e` is captured after the Prelude and injected at *every* loop iteration unchanged. This prevents the hidden state from drifting away from the original input signal regardless of loop depth.
 
 ### Training example
 

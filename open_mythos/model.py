@@ -99,21 +99,6 @@ class OpenMythos(nn.Module):
             elif isinstance(m, nn.Embedding):
                 nn.init.normal_(m.weight, std=_INIT_STD)
 
-    @staticmethod
-    def _causal_mask(seq_len: int, device: torch.device) -> torch.Tensor:
-        """
-        Build an additive causal mask: 0 on and below the diagonal, -inf above.
-
-        Args:
-            seq_len -- sequence length
-            device  -- target device
-
-        Returns:
-            Tensor of shape (1, 1, seq_len, seq_len) broadcastable over (B, H, T, S)
-        """
-        mask = torch.full((1, 1, seq_len, seq_len), float("-inf"), device=device)
-        return torch.triu(mask, diagonal=1)
-
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -141,15 +126,20 @@ class OpenMythos(nn.Module):
             Logits, or ``(logits, balance_loss)`` when requested.
         """
         T = input_ids.shape[1]
-        device = input_ids.device
 
         x = self.embed(input_ids)
         # Stage 4.3 (P4.3): single buffer precomputed at init; no attn_type branch.
         freqs_cis = self.freqs_cis[start_pos : start_pos + T]
-        mask = self._causal_mask(T, device) if T > 1 else None
 
         for i, layer in enumerate(self.prelude):
-            x = layer(x, freqs_cis, mask, kv_cache, cache_key=f"prelude_{i}")
+            x = layer(
+                x,
+                freqs_cis,
+                None,
+                kv_cache,
+                cache_key=f"prelude_{i}",
+                causal=True,
+            )
 
         e = x  # encoded input frozen for injection every loop
         if return_balance_loss:
@@ -157,16 +147,26 @@ class OpenMythos(nn.Module):
                 x,
                 e,
                 freqs_cis,
-                mask,
+                None,
                 n_loops,
                 kv_cache,
                 return_balance_loss=True,
+                causal=True,
             )
         else:
-            x = self.recurrent(x, e, freqs_cis, mask, n_loops, kv_cache)
+            x = self.recurrent(
+                x, e, freqs_cis, None, n_loops, kv_cache, causal=True
+            )
 
         for i, layer in enumerate(self.coda):
-            x = layer(x, freqs_cis, mask, kv_cache, cache_key=f"coda_{i}")
+            x = layer(
+                x,
+                freqs_cis,
+                None,
+                kv_cache,
+                cache_key=f"coda_{i}",
+                causal=True,
+            )
 
         logits = self.head(self.norm(x))
         if return_balance_loss:
