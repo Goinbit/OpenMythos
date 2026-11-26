@@ -1,11 +1,11 @@
-from typing import Optional, Tuple, Union, cast
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from open_mythos.blocks import TransformerBlock
 from open_mythos.config import MythosConfig
+from open_mythos.generate import generate as _generate
 from open_mythos.kv_cache import StaticKVCache
 from open_mythos.primitives.norm import RMSNorm
 from open_mythos.primitives.rope import precompute_rope_freqs
@@ -173,101 +173,4 @@ class OpenMythos(nn.Module):
             return logits, balance_loss
         return logits
 
-    def _preallocate_kv_cache(
-        self, input_ids: torch.Tensor, n_loops: int
-    ) -> StaticKVCache:
-        batch = input_ids.shape[0]
-        device = input_ids.device
-        device_type = device.type
-        dtype = self.embed.weight.dtype
-        if torch.is_autocast_enabled(device_type):
-            dtype = torch.get_autocast_dtype(device_type)
-        cache = StaticKVCache(max_seq_len=self.cfg.max_seq_len)
-        if self.cfg.attn_type == "mla":
-            shapes = {
-                "c_kv": (batch, self.cfg.max_seq_len, self.cfg.kv_lora_rank),
-                "k_rope": (
-                    batch,
-                    self.cfg.max_seq_len,
-                    self.cfg.n_heads,
-                    self.cfg.qk_rope_head_dim,
-                ),
-            }
-        else:
-            head_dim = self.cfg.dim // self.cfg.n_heads
-            shapes = {
-                "k": (batch, self.cfg.max_seq_len, self.cfg.n_kv_heads, head_dim),
-                "v": (batch, self.cfg.max_seq_len, self.cfg.n_kv_heads, head_dim),
-            }
-        layers = [f"prelude_{i}" for i in range(self.cfg.prelude_layers)]
-        layers += [f"recurrent_loop_{i}" for i in range(n_loops)]
-        layers += [f"coda_{i}" for i in range(self.cfg.coda_layers)]
-        for layer in layers:
-            for suffix, shape in shapes.items():
-                cache.preallocate(f"{layer}:{suffix}", shape, dtype, device)
-        return cache
-
-    @torch.no_grad()
-    def generate(
-        self,
-        input_ids: torch.Tensor,
-        max_new_tokens: int = 64,
-        n_loops: int = 8,
-        temperature: float = 1.0,
-        top_k: int = 50,
-    ) -> torch.Tensor:
-        """
-        Autoregressive token generation with KV caching.
-
-        On step 0 the full prompt is processed. On subsequent steps only the
-        last generated token is passed, with all previous keys and values
-        retrieved from kv_cache. This keeps decode cost proportional to one
-        token per step rather than the full growing sequence.
-
-        n_loops can be set higher than the training value to extrapolate to
-        harder problems at inference time (depth extrapolation property).
-
-        Args:
-            input_ids      -- prompt token indices of shape (B, T)
-            max_new_tokens -- number of tokens to generate
-            n_loops        -- recurrent loop depth for each decode step
-            temperature    -- softmax temperature; lower = more greedy
-            top_k          -- restrict sampling to top-K logits (0 = disabled)
-
-        Returns:
-            Token indices of shape (B, T + max_new_tokens)
-        """
-        # P3.3: allocate every layer/loop buffer before the first forward so
-        # decode only writes slices and never allocates cache storage.
-        kv_cache: StaticKVCache = self._preallocate_kv_cache(
-            input_ids, n_loops or self.cfg.max_loop_iters
-        )
-        prompt_len = input_ids.shape[1]
-        for step in range(max_new_tokens):
-            if step == 0:
-                cur_ids = input_ids
-                start_pos = 0
-            else:
-                cur_ids = input_ids[:, -1:]
-                start_pos = prompt_len + step - 1
-            # Stop if the next forward would exceed RoPE precomputation range.
-            if start_pos + cur_ids.shape[1] > self.cfg.max_seq_len:
-                break
-            logits = cast(
-                torch.Tensor,
-                self.forward(
-                    cur_ids,
-                    n_loops=n_loops,
-                    kv_cache=kv_cache,
-                    start_pos=start_pos,
-                    return_balance_loss=False,
-                ),
-            )
-            logits = logits[:, -1, :] / temperature
-            if top_k > 0:
-                v, _ = logits.topk(top_k)
-                logits[logits < v[:, -1:]] = float("-inf")
-            probs = F.softmax(logits, dim=-1)
-            next_tok = torch.multinomial(probs, num_samples=1)
-            input_ids = torch.cat([input_ids, next_tok], dim=1)
-        return input_ids
+    generate = _generate

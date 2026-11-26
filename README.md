@@ -213,7 +213,7 @@ Where:
 
 The injection of `e` at every step is what prevents the model from drifting — it keeps the original input signal alive throughout the entire recurrence depth.
 
-The implementation lives in the [`open_mythos/`](open_mythos/) package (`config.py`, `attention/`, `moe.py`, `recurrence/`, `blocks.py`, `model.py`); `main.py` is a re-export shim kept for backwards compatibility. See the [`OpenMythos` class reference](docs/open_mythos.md) for a detailed API walkthrough, configuration options, and usage examples.
+The implementation lives in the [`open_mythos/`](open_mythos/) package (`config.py`, `attention/`, `moe/`, `recurrence/`, `blocks.py`, `model.py`, `generate.py`); `main.py` is a re-export shim kept for backwards compatibility. See the [`OpenMythos` class reference](docs/open_mythos.md) for a detailed API walkthrough, configuration options, and usage examples.
 
 ### Attention Implementations
 
