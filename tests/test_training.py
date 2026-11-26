@@ -463,6 +463,89 @@ class TestHeldoutEval:
         assert calls == 1
 
 
+class _BalanceModel(torch.nn.Module):
+    def __init__(self, cfg: MythosConfig):
+        super().__init__()
+        self.cfg = cfg
+        self.weight = torch.nn.Parameter(torch.ones(cfg.vocab_size))
+        self.balance_scale = torch.nn.Parameter(torch.ones(()))
+
+    def forward(self, input_ids: torch.Tensor, return_balance_loss: bool = False):
+        batch, length = input_ids.shape
+        logits = self.weight.view(1, 1, -1).expand(batch, length, -1)
+        if return_balance_loss:
+            return logits, self.cfg.moe_balance_alpha * self.balance_scale.square()
+        return logits
+
+
+class TestTrainerBalanceLoss:
+    def test_trainer_adds_balance_loss_when_configured(self, tmp_path):
+        from training.trainer import Trainer
+
+        cfg = tiny_cfg(moe_balance_alpha=0.1)
+        model = _BalanceModel(cfg)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+        input_ids = torch.randint(0, cfg.vocab_size, (2, 8))
+        targets = torch.randint(0, cfg.vocab_size, (2, 8))
+        trainer = Trainer(
+            cfg=cfg,
+            model=model,
+            optimizer=optimizer,
+            dataloader=[(input_ids, targets)],
+            device="cpu",
+            local_rank=0,
+            rank=0,
+            world_size=1,
+            ddp=False,
+            master=True,
+            amp_ctx=nullcontext(),
+            vocab_size=cfg.vocab_size,
+            ckpt_dir=str(tmp_path),
+            total_steps=1,
+            log_every=1,
+            ckpt_every=1,
+            grad_accum_steps=1,
+            warmup_steps=0,
+            max_lr=0.1,
+            grad_clip=100.0,
+        )
+        trainer.run()
+        assert model.balance_scale.grad is not None
+        assert model.balance_scale.grad.item() == pytest.approx(0.2)
+
+    def test_trainer_skips_balance_loss_when_alpha_is_zero(self, tmp_path):
+        from training.trainer import Trainer
+
+        cfg = tiny_cfg(moe_balance_alpha=0.0)
+        model = _BalanceModel(cfg)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+        input_ids = torch.randint(0, cfg.vocab_size, (2, 8))
+        targets = torch.randint(0, cfg.vocab_size, (2, 8))
+        trainer = Trainer(
+            cfg=cfg,
+            model=model,
+            optimizer=optimizer,
+            dataloader=[(input_ids, targets)],
+            device="cpu",
+            local_rank=0,
+            rank=0,
+            world_size=1,
+            ddp=False,
+            master=True,
+            amp_ctx=nullcontext(),
+            vocab_size=cfg.vocab_size,
+            ckpt_dir=str(tmp_path),
+            total_steps=1,
+            log_every=1,
+            ckpt_every=1,
+            grad_accum_steps=1,
+            warmup_steps=0,
+            max_lr=0.1,
+        )
+        trainer.run()
+        assert model.balance_scale.grad is None
+
+
 # ---------------------------------------------------------------------------
 # LR schedule: warmup then cosine decay to min_lr
 # ---------------------------------------------------------------------------

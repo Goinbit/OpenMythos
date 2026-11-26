@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
@@ -120,7 +120,8 @@ class OpenMythos(nn.Module):
         n_loops: Optional[int] = None,
         kv_cache: Optional[Union[dict, StaticKVCache]] = None,
         start_pos: int = 0,
-    ) -> torch.Tensor:
+        return_balance_loss: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Forward pass through Prelude → Recurrent Block → Coda.
 
@@ -134,9 +135,10 @@ class OpenMythos(nn.Module):
                          sequence; used to select the correct RoPE frequencies
                          during incremental decoding (0 for prefill, prompt_len
                          for each subsequent decode step)
+            return_balance_loss -- opt in to returning the recurrent MoE balance loss
 
         Returns:
-            Logits of shape (B, T, vocab_size)
+            Logits, or ``(logits, balance_loss)`` when requested.
         """
         T = input_ids.shape[1]
         device = input_ids.device
@@ -150,12 +152,26 @@ class OpenMythos(nn.Module):
             x = layer(x, freqs_cis, mask, kv_cache, cache_key=f"prelude_{i}")
 
         e = x  # encoded input frozen for injection every loop
-        x = self.recurrent(x, e, freqs_cis, mask, n_loops, kv_cache)
+        if return_balance_loss:
+            x, balance_loss = self.recurrent(
+                x,
+                e,
+                freqs_cis,
+                mask,
+                n_loops,
+                kv_cache,
+                return_balance_loss=True,
+            )
+        else:
+            x = self.recurrent(x, e, freqs_cis, mask, n_loops, kv_cache)
 
         for i, layer in enumerate(self.coda):
             x = layer(x, freqs_cis, mask, kv_cache, cache_key=f"coda_{i}")
 
-        return self.head(self.norm(x))
+        logits = self.head(self.norm(x))
+        if return_balance_loss:
+            return logits, balance_loss
+        return logits
 
     def _preallocate_kv_cache(
         self, input_ids: torch.Tensor, n_loops: int
@@ -237,8 +253,15 @@ class OpenMythos(nn.Module):
             # Stop if the next forward would exceed RoPE precomputation range.
             if start_pos + cur_ids.shape[1] > self.cfg.max_seq_len:
                 break
-            logits = self.forward(
-                cur_ids, n_loops=n_loops, kv_cache=kv_cache, start_pos=start_pos
+            logits = cast(
+                torch.Tensor,
+                self.forward(
+                    cur_ids,
+                    n_loops=n_loops,
+                    kv_cache=kv_cache,
+                    start_pos=start_pos,
+                    return_balance_loss=False,
+                ),
             )
             logits = logits[:, -1, :] / temperature
             if top_k > 0:

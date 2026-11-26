@@ -240,10 +240,17 @@ class Trainer:
                     # model-construction time via
                     # ``apply_grad_checkpoint_if_enabled`` (see trainer module
                     # top); no per-step wrap needed here.
-                    logits = self.model(x)
+                    if self.cfg.moe_balance_alpha > 0:
+                        logits, balance_loss = self.model(
+                            x, return_balance_loss=True
+                        )
+                    else:
+                        logits = self.model(x)
                     loss = nn.functional.cross_entropy(
                         logits.view(-1, self.vocab_size), y.view(-1)
                     )
+                    if self.cfg.moe_balance_alpha > 0:
+                        loss = loss + balance_loss
                     loss = loss / self.grad_accum_steps
 
                 loss_value = loss.item()

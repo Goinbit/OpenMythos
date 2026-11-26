@@ -2035,6 +2035,52 @@ class TestMoEBalanceLoss:
         assert balance_loss.item() > 0.0
 
 
+    def test_transformer_block_returns_opt_in_balance_loss(self):
+        cfg = gqa_cfg(
+            dim=64, n_experts=4, n_experts_per_tok=2,
+            n_shared_experts=1, expert_dim=16, moe_balance_alpha=0.01,
+        )
+        block = TransformerBlock(cfg, use_moe=True).train()
+        x = torch.randn(2, 8, cfg.dim)
+        freqs = precompute_rope_freqs(cfg.dim // cfg.n_heads, cfg.max_seq_len)
+        default = block(x, freqs[:8])
+        out, balance_loss = block(x, freqs[:8], return_balance_loss=True)
+        torch.testing.assert_close(out, default)
+        assert balance_loss.dim() == 0
+        assert torch.isfinite(balance_loss)
+        assert balance_loss.item() > 0.0
+
+    def test_recurrent_block_returns_accumulated_balance_loss(self):
+        cfg = gqa_cfg(
+            dim=64, n_experts=4, n_experts_per_tok=2,
+            n_shared_experts=1, expert_dim=16, moe_balance_alpha=0.01,
+        )
+        block = RecurrentBlock(cfg).train()
+        h = torch.randn(2, 8, cfg.dim)
+        e = torch.randn(2, 8, cfg.dim)
+        freqs = precompute_rope_freqs(cfg.dim // cfg.n_heads, cfg.max_seq_len)
+        default = block(h, e, freqs[:8])
+        out, balance_loss = block(h, e, freqs[:8], return_balance_loss=True)
+        torch.testing.assert_close(out, default)
+        assert balance_loss.dim() == 0
+        assert torch.isfinite(balance_loss)
+        assert balance_loss.item() > 0.0
+
+    def test_model_returns_opt_in_balance_loss(self):
+        cfg = gqa_cfg(
+            vocab_size=100, dim=64, n_experts=4, n_experts_per_tok=2,
+            n_shared_experts=1, expert_dim=16, moe_balance_alpha=0.01,
+        )
+        model = OpenMythos(cfg).train()
+        input_ids = torch.randint(0, cfg.vocab_size, (2, 8))
+        default = model(input_ids)
+        logits, balance_loss = model(input_ids, return_balance_loss=True)
+        torch.testing.assert_close(logits, default)
+        assert balance_loss.dim() == 0
+        assert torch.isfinite(balance_loss)
+        assert balance_loss.item() > 0.0
+
+
 # ---------------------------------------------------------------------------
 # P4.4: MythosConfig nested split — backward compat + cross-group validation
 # ---------------------------------------------------------------------------
