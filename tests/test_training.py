@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import importlib.util
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -168,6 +169,124 @@ class TestCheckpointRoundtrip:
                 ddp=False,
                 master=True,
             )
+
+
+# ---------------------------------------------------------------------------
+# Trainer non-finite guards (P0.2)
+# ---------------------------------------------------------------------------
+
+
+class _PoisonModel(torch.nn.Module):
+    def __init__(self, cfg: MythosConfig, poison: str):
+        super().__init__()
+        self.cfg = cfg
+        self.poison = poison
+        self.weight = torch.nn.Parameter(torch.ones(cfg.vocab_size))
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        batch, length = input_ids.shape
+        logits = self.weight.view(1, 1, -1).expand(batch, length, -1)
+        if self.poison == "loss":
+            logits = logits.clone()
+            logits.reshape(-1)[0] = float("nan")
+        return logits
+
+
+class TestTrainerNonfiniteGuard:
+    def _trainer(self, tmp_path, poison: str):
+        from training.trainer import Trainer
+
+        cfg = tiny_cfg()
+        model = _PoisonModel(cfg, poison)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+        input_ids = torch.randint(0, cfg.vocab_size, (2, 8))
+        targets = torch.randint(0, cfg.vocab_size, (2, 8))
+        return Trainer(
+            cfg=cfg,
+            model=model,
+            optimizer=optimizer,
+            dataloader=[(input_ids, targets)],
+            device="cpu",
+            local_rank=0,
+            rank=0,
+            world_size=1,
+            ddp=False,
+            master=True,
+            amp_ctx=nullcontext(),
+            vocab_size=cfg.vocab_size,
+            ckpt_dir=str(tmp_path),
+            total_steps=1,
+            log_every=1,
+            ckpt_every=1,
+            grad_accum_steps=1,
+            warmup_steps=0,
+            max_lr=0.1,
+        )
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf")])
+    def test_nonfinite_loss_blocks_before_backward(self, tmp_path, value):
+        trainer = self._trainer(tmp_path, "loss")
+        trainer.model.poison = "loss"
+        original_forward = trainer.model.forward
+
+        def poisoned_forward(input_ids):
+            logits = original_forward(input_ids)
+            logits = logits.clone()
+            logits.reshape(-1)[0] = value
+            return logits
+
+        trainer.model.forward = poisoned_forward
+        backward_calls = 0
+        original_backward = torch.Tensor.backward
+
+        def counting_backward(tensor, *args, **kwargs):
+            nonlocal backward_calls
+            backward_calls += 1
+            return original_backward(tensor, *args, **kwargs)
+
+        torch.Tensor.backward = counting_backward
+        try:
+            with pytest.raises(RuntimeError, match="Non-finite loss"):
+                trainer.run()
+        finally:
+            torch.Tensor.backward = original_backward
+        assert backward_calls == 0
+        assert list(tmp_path.glob("step_*.pt")) == []
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf")])
+    def test_nonfinite_gradient_blocks_before_optimizer_step(self, tmp_path, value):
+        trainer = self._trainer(tmp_path, "finite")
+        step_calls = 0
+        original_step = trainer.optimizer.step
+
+        def counting_step(*args, **kwargs):
+            nonlocal step_calls
+            step_calls += 1
+            return original_step(*args, **kwargs)
+
+        trainer.optimizer.step = counting_step
+        original_backward = torch.Tensor.backward
+
+        def poisoned_backward(tensor, *args, **kwargs):
+            result = original_backward(tensor, *args, **kwargs)
+            for parameter in trainer.model.parameters():
+                if parameter.grad is not None:
+                    parameter.grad.fill_(value)
+            return result
+
+        torch.Tensor.backward = poisoned_backward
+        try:
+            with pytest.raises(RuntimeError, match="Non-finite gradient norm"):
+                trainer.run()
+        finally:
+            torch.Tensor.backward = original_backward
+        assert step_calls == 0
+        assert list(tmp_path.glob("step_*.pt")) == []
+
+    def test_finite_step_still_runs(self, tmp_path):
+        trainer = self._trainer(tmp_path, "finite")
+        trainer.run()
+        assert len(list(tmp_path.glob("step_*.pt"))) == 1
 
 
 # ---------------------------------------------------------------------------

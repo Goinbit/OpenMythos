@@ -264,6 +264,11 @@ class Trainer:
                 grad_norm = nn.utils.clip_grad_norm_(
                     self.model.parameters(), max_norm=self.grad_clip
                 )
+            grad_norm_value = float(grad_norm)
+            if not math.isfinite(grad_norm_value):
+                raise RuntimeError(
+                    f"Non-finite gradient norm at step {step}: {grad_norm_value}"
+                )
             self.optimizer.step()
             step += 1
 
@@ -274,14 +279,14 @@ class Trainer:
                     tokens_seen = step * self.global_batch_tok
                     logger.info(
                         f"step {step:6d}/{self.total_steps} | loss {loss_accum:.4f} "
-                        f"| gnorm {float(grad_norm):.2f} | lr {cur_lr:.2e} "
+                        f"| gnorm {grad_norm_value:.2f} | lr {cur_lr:.2e} "
                         f"| {tok_per_sec / 1e6:.2f}M tok/s "
                         f"| {tokens_seen / 1e9:.1f}B tokens seen"
                     )
                 else:
                     logger.info(
                         f"step {step:6d}/{self.total_steps} | loss {loss_accum:.4f} "
-                        f"| gnorm {float(grad_norm):.2f} | lr {cur_lr:.2e}"
+                        f"| gnorm {grad_norm_value:.2f} | lr {cur_lr:.2e}"
                     )
                 t0 = time.perf_counter()
 
