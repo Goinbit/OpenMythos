@@ -60,6 +60,34 @@ class TestVariantNames:
         presets = {n for n in dir(variants_module) if n.startswith("mythos_")}
         assert sorted(presets - set(_VARIANT_NAME.findall(_text()))) == []
 
+    def test_variant_table_matches_configs(self) -> None:
+        rows = {}
+        for line in _text().splitlines():
+            if line.startswith("| `mythos_"):
+                cells = [cell.strip().strip("`") for cell in line.strip("|").split("|")]
+                rows[cells[0]] = cells[1:]
+
+        def compact(value: int) -> str:
+            if value >= 1_000_000:
+                return f"{value // 1_000_000}M"
+            if value >= 1_024:
+                return f"{value // 1_024}k"
+            return str(value)
+
+        presets = {n for n in dir(variants_module) if n.startswith("mythos_")}
+        assert rows.keys() == presets
+        for name in sorted(presets):
+            cfg = getattr(variants_module, name)()
+            expected = [
+                str(cfg.dim),
+                str(cfg.n_experts),
+                str(cfg.expert_dim),
+                str(cfg.max_loop_iters),
+                compact(cfg.max_seq_len),
+                compact(cfg.max_output_tokens),
+            ]
+            assert rows[name] == expected, name
+
     def test_imported_names_are_public(self) -> None:
         block = _block_containing("from open_mythos import (")
         imported = [
@@ -77,6 +105,40 @@ class TestSnippetsExecute:
     def test_usage_block_runs_end_to_end(self) -> None:
         source = _block_containing("Spectral radius")
         exec(compile(source, "README.md:usage", "exec"), {"__name__": "readme_usage"})
+
+
+class TestPackageAndTrainingClaims:
+    def test_badge_tracks_the_published_package_name(self) -> None:
+        text = _text()
+        assert "https://pypi.org/project/open-mythos/" in text
+        assert "https://img.shields.io/pypi/v/open-mythos" in text
+
+    def test_optimizer_matches_entry_point(self) -> None:
+        source = (REPO_ROOT / "training" / "run_3b.py").read_text()
+        assert "torch.optim.AdamW" in source
+        assert "| Optimizer | AdamW |" in _text()
+
+    def test_dataset_and_tokenizer_match_sources(self) -> None:
+        data_source = (REPO_ROOT / "training" / "data.py").read_text()
+        tokenizer_source = (REPO_ROOT / "open_mythos" / "tokenizer.py").read_text()
+        assert '"HuggingFaceFW/fineweb-edu"' in data_source
+        assert 'DEFAULT_MODEL_ID = "openai/gpt-oss-20b"' in tokenizer_source
+        assert "`HuggingFaceFW/fineweb-edu`" in _text()
+        assert "`openai/gpt-oss-20b`" in _text()
+
+    def test_schedule_claim_matches_implementation(self) -> None:
+        schedule_source = (REPO_ROOT / "training" / "schedule.py").read_text()
+        assert "math.cos" in schedule_source
+        assert "Linear warmup" in _text()
+        assert "cosine decay" in _text()
+
+    def test_no_unimplemented_flash_attention_claim(self) -> None:
+        attention_source = "\n".join(
+            path.read_text() for path in (REPO_ROOT / "open_mythos" / "attention").glob("*.py")
+        )
+        assert "flash_attn" not in attention_source
+        assert "Flash Attention 2" not in _text()
+        assert "open-mythos[flash]" not in _text()
 
 
 class TestTrainingDocs:
@@ -103,6 +165,8 @@ class TestTrainingDocs:
         trainer = (REPO_ROOT / "training" / "trainer.py").read_text()
         if "GradScaler" not in entry + trainer:
             assert "GradScaler on older GPUs" not in _text()
+            assert "Uses GradScaler" not in _text()
+            assert "No dynamic loss scaler" in _text()
 
     def test_warmup_and_token_budget_match_the_constants(self) -> None:
         from training import run_3b
