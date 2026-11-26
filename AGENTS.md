@@ -242,45 +242,50 @@ All work in this project must reference the phase/item below when opening a PR (
 
 ---
 
-## 当前整体状态(截至 2026-11-24)
+## 当前整体状态(截至 2026-11-27)
 
 | Stage | 状态 | 备注 |
 |---|---|---|
-| Stage 0 紧急修复 | ✅ 完成 | P0.1-P0.5 全部 |
-| Stage 1 契约硬化 | ✅ 完成 | P1.1-P1.5 全部 |
-| Stage 2 回归测试补齐 | ✅ 完成 | P2.1-P2.8 全部 · 现测 **350 passed** |
-| Stage 3 性能融合 | ✅ 完成(性能读数 2026-11-24 首次落地) | P3.1-P3.8 全部(含 P3.3 独立 PR 合并)· `benchmarks/gate_bench.py` 产出的 CPU 侧读数已达 **8 条 CI payload**:**MoE 向量化 3.270×(arm64)/ 2.587-3.137×(x86 八条)、SDPA 1.079×(arm64)/ 1.371-1.649×(x86),同 seq256 同版本栈** —— 两 ISA 结论相反且组内仍摆动:P3.2 的 ≥3× 在 arm64 2/2 达成、在 x86 只 2/8;P3.1 的 ≥1.5× 在 arm64 0/2、在 x86 5/8;**按能力类分组不仅区间重叠,连排序都不成立**(第 7 条 payload 是 `AVX512` 却读出全部 8 条里最低的 SDPA 1.371×,低于所有 `AVX2` 读数)→ 判据单位只能是同坐标多次 run 的分布(决策 20);两者都只是 CPU 侧读数,退出门槛要的 3B **GPU** 吞吐仍未答(需硬件) |
-| Stage 4 架构重构 | ✅ 完成 | P4.1-P4.5 全部(含 RouterProtocol 预批延迟项交付) |
-| Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件 |
+| Stage 0 紧急修复 | 🟡 基本完成 | 修复已落地;P0.1/P0.3 指定回归与 P0.2 注入 NaN loss 测试仍缺 |
+| Stage 1 契约硬化 | 🟡 部分完成 | P1.2 已冻结 halted hidden/KV 并归一剩余权重;采用保守门控,未减少 dense Transformer flops |
+| Stage 2 回归测试补齐 | 🟡 数量达标、强度不均 | 现测 **354 passed**;部分生产路径/梯度等价/真实 DataLoader 覆盖仍弱 |
+| Stage 3 性能融合 | 🔴 验收未闭环 | P3.2 仍有专家 Python 循环与 `.tolist()`;P3.3 首次写入懒分配;无规定形状/显存/3B GPU 证据 |
+| Stage 4 架构重构 | 🟡 主体完成、契约未闭环 | 模块化与工厂可用;缺 `generate.py`/`moe/`,主路径 balance loss 未接入,训练 eval 非 held-out 且 FSDP rank0-only 有挂起风险 |
+| Stage 5 大规模训练 | 🔴 待 GPU | P5.1-P5.5 全部需硬件;P5.5 的平方 mask/预设治理可本地先做 |
 | small LM 本机轨道(计划外) | ✅ 收束(T1-T6) | **最终交付 v9-T5 75k**:val 1.4569 · EOS 60/60 · repeated 6 · missing 24 · endings 36/60;T6 平衡化负交换已记录([runbook](docs/runbooks/tinystories_v9_mid_scaling.md)) |
 | 深度外推实验(可行性门) | 🔴 判负(2026-10-27) | 外推不存在;深度买算力但 parity 不可扩展;**Phase 2 架构赌注关闭**([设计](docs/depth_extrapolation_experiment.md) · [路线](docs/commercial_roadmap.md)) |
 | 商用路线 | 🟡 待 Gate 0b 用户输入 | 唯一活分支 = 垂直领域专有数据 MVP;其余资产化([路线](docs/commercial_roadmap.md)) |
 | Q 量化轨道(计划外,BitNet b1.58) | 🔴 15.8M 定案:不达标 | Q1/Q2 管线就绪;Q3 阶梯 a 实测 Δ+0.27 val 未过 gate;兑现点 3B+(Stage 5)([计划](docs/bitnet_quantization_plan.md)) |
 
-**代码侧本地可推进范围内:0 技术债;验证通道缺口已补上、常态化、闸门口径漂移已闭掉、口径本身由闸门自证,并且对外文档(README)第一次也进了契约测。** CI 通道形态:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 即自动跑三闸门;改动批次一律"从 fork `main` 起短分支 → fork 内 PR(自动带 checks)→ `--merge` 合入",两轮按此形态走完 11 个 PR(#2–#11):PR [#2](https://github.com/Goinbit/OpenMythos/pull/2)(代码:pin torch)→ `0ac4948`;PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f`;PR [#6](https://github.com/Goinbit/OpenMythos/pull/6)(代码:闸门自证)→ `8d994f2`;PR #7(docs)→ `a31c272`;PR [#8](https://github.com/Goinbit/OpenMythos/pull/8)(代码:benchmarks harness + advisory 计时 job)→ `b8a604c`;PR [#9](https://github.com/Goinbit/OpenMythos/pull/9)(docs:首次性能读数 + 硬件坐标)→ **`ac13882`**;PR [#10](https://github.com/Goinbit/OpenMythos/pull/10)(docs:runner 能力类读数的三轮自纠)→ **`f731717`**;PR [#11](https://github.com/Goinbit/OpenMythos/pull/11)(代码:README 对外声明契约测 + docs:本条目)= 本条目。闸门版本栈钉到位且收进单一来源:workflow 级 `env:` 定义 `torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8` = canonical `.venv-arm64` 口径,**install 引用该变量,每个 job 在判定步(或计时步)之前跑 `examples.ci_gate_stack` 断言实际解析结果**(runner 日志实测 `[gate-stack] OK torch 2.12.0+cpu matches pin 2.12.0`,五个 job 各有);首个 pin 后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿同为 **`torch 2.12.0+cpu`** / 各 **301 passed**(12.31s / 18.32s)/ mypy **0 errors 35 files** / ruff 全过;`d3ce0f2` 的 run [`45335182662`](https://github.com/Goinbit/OpenMythos/actions/runs/45335182662) 与 `9112570` 的 run [`45336603284`](https://github.com/Goinbit/OpenMythos/actions/runs/45336603284) 同样 4/4(12.75s / 18.35s);合入 PR #6 后的 `8d994f2` run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 双腿 **320 passed**;合入 PR #8 后的 `b8a604c` run [`45363445179`](https://github.com/Goinbit/OpenMythos/actions/runs/45363445179) 起为 **5/5**,双腿 **340 passed**(19.19s / 20.41s)且 benchmark job 产出 `gate_bench.json` artifact;合入 PR #9 后的 `ac13882` run [`45366614536`](https://github.com/Goinbit/OpenMythos/actions/runs/45366614536) 同样 5/5(双腿 22.97s / 23.28s);合入 PR #10 后的 `f731717` run [`45372820656`](https://github.com/Goinbit/OpenMythos/actions/runs/45372820656) 5/5,双腿各 **340 passed**(该批次纯 docs 未改测试)—— **主干每次合入都自动跑一遍闸:已核 10 条 run 全绿(实测于 `f731717`),计数随合入前进**(清单与口径见日志条目)。**benchmark job 的读数会换平台、同平台不是同一台机器、按平台分组连排序也给不出**:同一 job 定义在 **8 条** CI payload 里落在 `x86_64/AVX512`(**4 条**)、`x86_64/AVX2`(**3 条**)与一条无 `cpu` 字段的早期 run;第二条 `AVX2` 与第一条 `AVX2` 的比率方向相反,而第 7 条 payload(PR #10 合入后的 trunk,纯 docs 批次、代码一字未动)落回 `AVX512` 却读出**全部 8 条里最低的 SDPA 1.3705×**,低于所有 `AVX2` 读数;两类 SDPA 区间因此从 1.437–1.526 vs 1.512–1.649 扩为 **1.371–1.526 vs 1.468–1.649**(重叠加宽)。故 `cpu` 只能当元数据报告,性能判据的单位必须是**同坐标多次 run 的分布(中位数 + 容差带)**(见决策 20);附带一次真实兑现:单 run 比率闸若已上线,那条普通 trunk push 会被误报成 10.2% 的性能退化。**仍按腿自由解析的层**:numpy(2.2.6 / 2.5.5)、transformers(5.20.2 / 5.24.0)、datasets(5.2.0)、pytest(9.2.0)—— 这些不是判定口径(除 numpy 外),刻意不钉以免每次上游发版都要改文件,引用时按此说明。分支拓扑:上游 PR #91 的 head = `codex/sync-main-with-origin-20260524` @ **`66c40bb`**(`state=open / mergeable=MERGEABLE`,自 2026-11-01 等裁决;PR #8/#9/#10 合入后复测仍是 `66c40bb` ✅),fork `main` 领先 upstream `origin/main`(kyegomez)**138 commits**、领先该 head **28 commits**(实测于 `f731717`,口径 `gh api repos/Goinbit/OpenMythos/compare/<upstream>...<fork main>`;**增量 = 分支提交数 + 1 个 merge commit**,PR #8 带 2 个提交故 +3、PR #9 带 1 个故 +2(18→20 实测兑现)、PR #10 带 7 个故 +8(20→28 实测兑现,规则第三次验证),旧条目"每次合入 +2"只对单提交分支成立,**别把主干计数或 SHA 当常量写进结论**) —— 日常提交从此走 fork `main` 短分支,不再触碰 PR #91 的 head,既守住"先不推送"对该分支的约束,也解除"docs 提交推送 = 对上游可见"的两难。**PR #1 之前的 100+ 历史提交仍未有过任何 check-run**(Actions 无法对过去补跑)。最大交付风险已从"绿只有本机证据"降为"绿有第三方环境 + 主干持续 + 版本栈对齐三重背书,但历史批次仍未过闸"。
+**代码侧仍有已证实技术债,不再宣称“0 技术债”**:ACT dense flops、fp16 无 GradScaler/梯度有限性检查、FSDP eval rank0-only 与非 held-out、P3.2 专家循环/主机同步、P3.3 懒分配、P4.1 目录蓝图缺口、README FlashAttention 2 假声明与闸门盲点。验证通道本身已常态化:fork `main` 自带 workflow(自 `b42aa38`),push 到 `main` 自动跑三闸门 + advisory benchmark;改动批次走“fork `main` 短分支 → fork 内 PR → `--merge`”。闸门版本栈由 workflow 级 `env:` 单一源定义,每个 job 在判定/计时前断言实际解析结果。**当前 trunk 证据**(实测于 `c7ef525`,run [`45382772415`](https://github.com/Goinbit/OpenMythos/actions/runs/45382772415)):5/5 success,py3.10/py3.12 各 350 passed @ `torch 2.12.0+cpu`,mypy 0/35,ruff 全过;主干 push 已连续 11 条全绿(`gh run list --branch main --event push`)。**benchmark 只是 CPU advisory**:已下载 15 份 artifact(10 `AVX512` + 4 `AVX2` + 1 无 `cpu`),SDPA 1.223–1.649×(9/15 ≥1.5),MoE 2.484–3.259×(5/15 ≥3);按能力类分组不能解释方差,GPU 退出门槛未答。**分支拓扑**(实测于 `c7ef525`):上游 PR #91 head 仍 `66c40bb`;fork `main` 领先 upstream 142、领先该 head 32,behind 0。日常提交不触碰 PR #91 head。**PR #1 之前的历史提交仍无 check-run**。
 
 ### 基础设施齐备度
 
 | 项 | 状态 |
 |---|---|
 | **闸门环境(2026-11-24 定锚)** | ✅ `.venv-arm64` = arm64 python + torch 2.12.0 + numpy 2.4.6 + pyarrow 24.0.0 + datasets 4.8.5 + transformers 5.10.2 + **mypy 2.4.1** + **ruff 0.15.8** + pytest 9.0.3 —— 三闸门唯一同时可跑且全绿的环境,也是 CI 依赖解析的对标口径。**CI 已把判定口径那三层钉到本环境**:`torch==2.12.0`(test 双腿 + typecheck + benchmark)+ `mypy==2.4.1` + `ruff==0.15.8`,且**三处 pin 只定义在 workflow 级 `env:` 单一源里,install 引用变量**;numpy/transformers/datasets/pytest 仍由 pip 解析(见 CI 行)。`.venv` 为 x86/Rosetta + torch 2.2.2 的历史回退环境(无 ruff/pytest-cov,不用于闸门) |
-| pytest 守护 | ✅ **350 passed / 0 skipped**(2026-11-24 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试;历史条目中的"301"= 加 `ci_gate_stack` 19 项之前,"310"= 301 + 9,"320"= 301 + 19,"340"= 320 + `gate_bench` 19 + benchmark 契约 1,**350**= 340 + README 契约 10)· 警告计数 3 → **4**:第 4 条是 `test_readme_claims` 真跑 Usage 块时由 `generate(n_loops=8)` > `max_loop_iters=4` 正常触发的 P1.3 LoRA 外推 warning,**不是回归,别去"修"** |
-| 文档契约(tests/test_readme_claims.py,新) | ✅ **README 第一次成为被测对象**(2026-11-24,PR #11):119 行 / 10 项,覆盖相对链接可达、`variants.py` 七个 preset 与 README 双向一致、Usage 块**真跑**(不是 grep)、训练入口非 deprecated 且命令用 `-m training.`、并行/精度声明与 `training/run_3b.py` 源码对查、warmup/30B/subset 数字取自模块属性 —— **首跑判负 6 条**(`mythos_7b` 不存在、`eigvals` 直接抛异常、两处 deprecated 入口、DDP 实为 FSDP、GradScaler 全无),另修 3 处准确性、1 处补引文块;PyPI badge 版本、AdamW、数据集名、调度、preset 表格数字逐条核实后**保留** |
-| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1028** stmts,2026-11-24 因本轮快照仍写 1026 而重测 —— 差 2 语句来自 `benchmarks/` 之外的既有包,`open_mythos/` 自 `7eba113` 未改)—— 超阶段 2 ≥70% 门槛,百分比自 10-24 持平 |
-| GitHub Actions CI | ✅ **首批真实运行 2026-11-24 → 常态化到 base 分支 → 口径钉齐 → 口径自证 → 计时通道(五步同日完成)** — ① fork 内自开 PR [#1](https://github.com/Goinbit/OpenMythos/pull/1) 4/4 check-run 全绿并合入 fork `main`(`b42aa38`),workflow 进 base 后 push 事件也触发;② **把 torch 层钉住**:`1ae53e6` 在 test 双腿 + typecheck 三处 `torch==2.12.0`(与 canonical `.venv-arm64` 同代 stub),经 PR [#2](https://github.com/Goinbit/OpenMythos/pull/2) run [`45333822067`](https://github.com/Goinbit/OpenMythos/actions/runs/45333822067) 4/4 → 合入 `0ac4948`;③ 合入后的 main push run [`45334069724`](https://github.com/Goinbit/OpenMythos/actions/runs/45334069724) **4/4 success**,日志实测双腿 `torch 2.12.0+cpu` / 各 **301 passed** / mypy **0 errors 35 files** / ruff 全过 —— 与本机对标口径**同栈同计数**;④ **口径自证**:`d686655` 把三层 pin 收进 workflow `env:` 单一源,三个 job 各加 `Assert gate stack` 且排在判定步之前(新增 `examples/ci_gate_stack.py` + 19 项测试,其中 5 项把 ci.yml 结构本身当契约测),经 PR [#6](https://github.com/Goinbit/OpenMythos/pull/6) run [`45358290221`](https://github.com/Goinbit/OpenMythos/actions/runs/45358290221) 4/4 → 合入 **`8d994f2`**;主干 push run [`45358591379`](https://github.com/Goinbit/OpenMythos/actions/runs/45358591379) 4/4 且四个 job 日志逐条 `[gate-stack] OK torch 2.12.0+cpu` / `mypy 2.4.1` / `ruff 0.15.8`,双腿 **320 passed** —— **自此 green 自带版本坐标,runner 解析出别的栈会在产出判定前先红**;⑤ **计时通道**:`4e72899` + `02a68f1` 新增 `benchmarks/gate_bench.py` 与第 5 个 job(`gate benchmark (advisory)` / `continue-on-error: true`),该 job 同样先跑 `Assert gate stack` 再计时,并把 `gate_bench.json` 上传为 artifact;经 PR [#8](https://github.com/Goinbit/OpenMythos/pull/8) run [`45363098767`](https://github.com/Goinbit/OpenMythos/actions/runs/45363098767) **5/5** → 合入 **`b8a604c`**;主干 push run [`45363445179`](https://github.com/Goinbit/OpenMythos/actions/runs/45363445179) 5/5,双腿 **340 passed** @ `torch 2.12.0+cpu`;⑥ **计时通道首次被读数本身检验**:`2f0256e` 经 PR [#9](https://github.com/Goinbit/OpenMythos/pull/9) run [`45366311697`](https://github.com/Goinbit/OpenMythos/actions/runs/45366311697) 5/5 → 合入 **`ac13882`**,其 trunk run [`45366614536`](https://github.com/Goinbit/OpenMythos/actions/runs/45366614536) 5/5(双腿 **340 passed** 22.97s / 23.28s @ `torch 2.12.0+cpu`),而该 run 的 benchmark payload 读出 `x86_64/AVX2`(前一条 trunk run 是 `AVX512`)—— **job 定义一字未动而 runner 换了能力类**,两个比率同向位移,于是性能判据须按 `cpu` 坐标分基线;⑦ **该字段随后在同轮内被自己检验两次**:PR #10 的两条 run(`45369046918` / `45369997668`)一条落回 `AVX512` 读出该类最低值、另一条落回 `AVX2` 却与第一条 `AVX2` 方向相反 —— 于是"分基线"也不够,判据单位必须是同坐标多次 run 的分布(决策 20 三层);⑧ **第四层由本批次交出**:PR #10 合入后的 trunk run [`45372820656`](https://github.com/Goinbit/OpenMythos/actions/runs/45372820656)(head `f731717`)5/5、双腿 **340 passed** @ `torch 2.12.0+cpu`,其 benchmark artifact 落回 `AVX512` 却读出 8 条里最低的 SDPA **1.3705×**——**低于所有 `AVX2` 读数**,于是分组连"哪个平台更快"的排序都给错(−10.2% 相对该类此前最好值 1.526,而 PR #10 是一批**与性能无关的 docs 合入**——若比率闸已上线,这就是一次普通主干推进触发的假"性能退化");本批次自己的第 8 条 payload(`45378882111`)落 `AVX2` 读出 SDPA **1.4684×**,类内偏低但不越类,于是 8 条 payload 的能力类分布为 4 `AVX512` + 3 `AVX2` + 1 无 `cpu` 字段。**同批次补上"对外文档只靠人读"这块空白**:`ad22ef3` 新增 `tests/test_readme_claims.py` 10 项,README 的 Usage 代码块第一次被真正 `exec`,首轮判负 6 条假声明(preset `mythos_7b` 从未存在 / `eigvals` 对 1-D 对角矩阵崩 / 两处训练入口指向已弃用 shim / DDP 实为 FSDP / fp16 路径并无 GradScaler),已全部修正,通道内证据为该 PR run 双腿 **350 passed**(23.15s / 20.48s)且五个 job 均先 `[gate-stack] OK` 再出判定或计时。**Repo Actions 本就是 `enabled: true`**(早前"has_actions=false" 是查询了不存在字段的结果,已纠偏)。**仍按腿漂移的层**:numpy 2.2.6/2.5.5、transformers 5.20.2/5.24.0、datasets 5.2.0、pytest 9.2.0(本机 9.0.3)—— 未钉,判定不依赖它们(numpy 例外:它是 pyarrow wheel 分叉的那一层,已在注释里写明为何不钉回)。**主干 push run 自 workflow 进 base 后逐次全绿**(已核 10 条,实测于 `f731717`:`45332751411` / `45334069724` / `45335182662` / `45336603284` / `45337780378` / `45358591379` / `45359496661` / `45363445179` / `45366614536` / `45372820656`;每合入一次即新增一条,计数不钉死 —— 核对 `gh run list --branch main --event push`)—— 三闸门 + 计时自此是"每次合入自动跑"的常态闸,不再是一次性验证。**PR #1 之前的 100+ 历史提交仍无任何 check-run** |
-| 性能证据(benchmarks/) | ✅ **项目史上首次有性能读数**(2026-11-24):`benchmarks/gate_bench.py`(336 行)产出 5 项 —— `sdpa_attention` / `vectorized_moe` 为**比率项**(先证数值等价、再计时,等价不过直接 `RuntimeError` 拒绝出数),`prefill` / `backward` / `decode_step` 为**绝对值项**(无优化前孪生实现,只作前后对比锚点)。本机 `arm64/DEFAULT`(Apple M5)与 CI x86_64 runner 同为 seq256 / repeat3 / threads1 读数**方向相反**:SDPA **1.079×** vs **1.371–1.649×**、MoE **3.270×** vs **2.587–3.137×**(arm64 seq512 另测得 SDPA 1.168× / MoE 3.286×)→ 因此 payload 强制携带 `torch` / `threads` / `cpu(machine+capability)` 坐标。**坐标立刻就有用,但分组不够**:CI **八条** payload 的 `cpu` 字段实测为 `x86_64/AVX512`(**四条**:两条 PR #8 + PR #10 的 `45369046918` + trunk `f731717` 的 `45372820656`)、`x86_64/AVX2`(**三条**:trunk `ac13882`、PR #10 的 `45369997668`、PR #11 的 `45378882111`)与一条无该字段的早期 run。四层发现:①同一 job 定义会落到不同能力类;②同类内部仍摆动(AVX512 四条 SDPA **1.371–1.526 = 11.3%**、MoE 2.672–3.137、backward 1838–3156 ms);③两条 `AVX2` 比率**方向相反**(1.649/2.588 vs 1.512/2.765)且两类 SDPA 区间**重叠**;④**新的 `AVX512` 读数(1.3705×)低于此前所有 `AVX2` 读数**,于是能力类连"谁更快"的排序都不能给出 → 分组既不解释方差也不能定判据。于是 P3.1 的 ≥1.5× 在 x86 侧 **5/8**、arm64 侧 0/2;P3.2 的 ≥3× 在 x86 侧 **2/8**、arm64 侧 2/2。**绝对值摆动**:backward 1837.779 → 3754.798 ms(**2.04×**)、prefill 575.464 → 1124.049 ms、decode_step 176.414 → 330.354 ms → job 设 `continue-on-error`:绝对 CPU 毫秒不可当闸;比率**也不能用单点阈值**——判据键须含 `(cpu, seq_len, threads, torch)` 且必须带容差带,而分组本身不替代容差带(决策 20)。**本批次新增的具体代价**:PR #10 是纯 docs 合入,主干 run 却在同能力类上把 SDPA 压低 10.2% —— 若比率闸已按单点阈值上线,这一条普通 trunk push 就是一次假退化告警 |
+| pytest 守护 | ✅ **354 passed / 0 skipped**(2026-11-27 实测,不含 9 个需联网下载 HF 资产的 tokenizer 测试)· 警告计数 **4**:3 条 LoRA 外推 + README Usage 块 `generate(n_loops=8)` 正常触发的 P1.3 warning,**不是回归** |
+| 文档契约(tests/test_readme_claims.py) | ✅ **README 已进入契约测,但覆盖有盲点**:10 项覆盖相对链接、preset 双向、Usage 真执行、训练入口/并行/精度与 warmup/token/subset;首轮判负 6 条假声明并修正。**未覆盖** PyPI badge/AdamW/数据集/调度/preset 表数字与 FlashAttention 2 声明;GradScaler 检查只禁一个精确短语,实测改成 "Uses GradScaler" 仍通过 |
+| 覆盖率基线(pytest-cov) | ✅ **97%**(open_mythos,**1030** stmts / 33 miss,2026-11-27 实测;`recurrence/block.py` 100%)—— 超阶段 2 ≥70% 门槛,但行覆盖率不等于危险分支覆盖 |
+| GitHub Actions CI | ✅ **常态化硬闸 + advisory benchmark**:workflow 级 `env:` 单一源钉定 `torch==2.12.0` / `mypy==2.4.1` / `ruff==0.15.8`,每个 job 在判定/计时前跑 `Assert gate stack`;主干 push 连续 **11 条全绿**(实测于 `c7ef525`,核对 `gh run list --branch main --event push`),最新 run [`45382772415`](https://github.com/Goinbit/OpenMythos/actions/runs/45382772415) 5/5、双腿 350 passed。PR #12 代码 run [`45855556139`](https://github.com/Goinbit/OpenMythos/actions/runs/45855556139) 同样 5/5。PR #1 之前历史提交仍无 check-run |
+| 性能证据(benchmarks/) | ✅ **有 CPU 读数,无 GPU 验收**:已下载 15 份 artifact(10 `AVX512` + 4 `AVX2` + 1 无 `cpu`),SDPA **1.223–1.649×**(9/15 ≥1.5),MoE **2.484–3.259×**(5/15 ≥3);等价差 ~1e-7。实际为 seq256/bsz1/head8 CPU 微基准,参考路径每次重建 mask,`decode_step` 含 prefill;不能证明规定 seq2048/bsz4/head16、显存或 3B GPU 门槛。判据只能按同坐标多次 run 分布,单点阈值已实证会误报 |
 | mypy 类型检查 | ✅ **0 errors / 35 files**(钉定 mypy 2.4.1 + torch 2.12.0,硬闸)· 已知不可两全:`attention/gqa.py:109` 在旧 torch 2.2.2 stub 下报 1 个 `enable_gqa` call-arg,而任何 ignore 在 2.12 stub 下会被 `warn_unused_ignores` 判冗余;运行期由 try/except 兜底 |
 | ruff | ✅ 0.15.8 全绿(硬闸)· **CI 由范围版本改为精确版本**:0.16+ 默认规则集扩张,同一棵树在 0.17.6 下多报 144 处(UP/I/PLR0402/RUF022 为主) |
 | pre-commit hooks | ✅ `.pre-commit-config.yaml`(ruff + mypy + hygiene) |
 | Stop hook 日志强制 | ✅ `.Codex/hooks/check_claude_md_updated.sh` |
-| Silent-failure-hunter 残余 | ✅ 0 项 |
-| 文件大小(400 行) | ✅ `open_mythos/` 核心模块满足(最大 `config.py` **360** 行)· `run_3b.py` 60 行保持 · **`benchmarks/gate_bench.py` 336 行(新目录同样满足 400 行硬闸)** · tests/examples 有已知例外(`tests/test_main.py` 1941 · `experimental/moda.py` 1021 · `train_small_lm.py` **746** 等) |
+| Silent-failure-hunter 残余 | 🔴 **审计发现未闭环**:fp16 梯度下溢无 scaler/有限性守卫;FSDP eval rank0-only 有挂起风险;P3.2 `.tolist()` 主机同步;README FlashAttention 2 假声明与闸门盲点 |
+| 文件大小(400 行) | ✅ `open_mythos/` 核心模块满足(最大 `config.py` **360** 行)· `run_3b.py` 60 行保持 · `benchmarks/gate_bench.py` 336 行 · tests/examples 有已知例外(`tests/test_main.py` **2012** · `experimental/moda.py` 1021 · `train_small_lm.py` 746 等) |
 
 ---
 
-## 最近一轮重点(2026-11-08 → 2026-11-24 · QuantKB 两周工作落盘 + 闸门可复现性 + CI 真实执行通道建成、常态化、口径钉齐、口径自证 + 性能闸门首次有数,且首个数就改写了口径含义 + 对外文档第一次进契约测)
+## 最近一轮重点(2026-11-27 · 三 Agent 进度审计 + P1.2/P2.1 ACT 正确性修复;此前基础设施与 README 契约见日志)
 
-### 交付总览 · OpenMythos 22 commits(实测于 `f731717`,口径 = `git log --no-merges --since=2026-11-08 --pretty=%h fork/main | wc -l`,不含 merge commit)+ QuantKB 11 commits
+### 当前批次
+- 代码:`2b4c66f` `[P1.2]` → PR [#12](https://github.com/Goinbit/OpenMythos/pull/12),run [`45855556139`](https://github.com/Goinbit/OpenMythos/actions/runs/45855556139) 5/5。
+- 测试:350 → **354 passed**;覆盖率 **97% / 1030 stmts**;mypy 0/35;ruff 全过。
+- 审计:撤销 Stage 3/4“全部完成”和“0 技术债”口径;下一优先级 = 训练安全 → P3.2 → P3.3/P3.5/P3.7 证据 → 文档闸。
+
+### 历史交付总览 · OpenMythos 22 commits(实测于 `f731717`,口径 = `git log --no-merges --since=2026-11-08 --pretty=%h fork/main | wc -l`,不含 merge commit)+ QuantKB 11 commits
 
 **计数口径纠正**:该列此前写"14 commits",按同一命令重测 = **22**(PR #10 的 7 提交批次合入后无人重测)——本条目自己命中决策 12("日志里的量化声明是待验事实")。此后该数字只在需要时测,不写进结论;本条目批次 = `ad22ef3` + docs 提交,合入后为第 23–24 个。
 
@@ -301,8 +306,8 @@ All work in this project must reference the phase/item below when opening a PR (
 
 | 维度 | 2026-10-24 快照 | 2026-11-24 实测 | Δ |
 |---|---|---|---|
-| OpenMythos 测试 | 246 | **350** | +104 |
-| 覆盖率 | 97% / 948 stmts | **97% / 1028 stmts**(本轮重测,快照旧写 1026) | 百分比持平,基数 +80 |
+| OpenMythos 测试 | 246 | **354**(2026-11-27) | +108 |
+| 覆盖率 | 97% / 948 stmts | **97% / 1030 stmts / 33 miss** | 百分比持平,基数 +82 |
 | mypy | "0 errors / 34 files"(该环境今天不可复现) | **0 / 35 @ 钉定版本** | 闸门真实化 |
 | CI | 从未运行(仅"已定义") | **base 分支自带闸 + 版本栈与本机对齐 + 常态执行 + 栈由 job 自己断言**:PR #1 → `b42aa38` → PR #2 钉 `torch==2.12.0` → `0ac4948` → PR #3/#4/#5(docs)→ `d3ce0f2` / `9112570` / `d3e923f` → PR #6 闸门自证 → `8d994f2`;**每次合入自动多一条全绿 main run(核对口径 `gh run list --branch main --event push`;已核 10 条,前 6 条 4/4、后 4 条 5/5;双腿同 `torch 2.12.0+cpu`,判定同为「全 passed + mypy 0/35 + ruff 全过 + `[gate-stack] OK`」,passed 计数随合入前进(301 → 320 → 340 → 350,不在文档里钉死),自 `b8a604c` 起再加 benchmark artifact;该 artifact 八条 payload 实测跨 `AVX512`/`AVX2` 两个能力类,类内摆动 6.2%–17.4%、类间区间重叠且排序也不稳定** | 验证通道建立、持续、可复现且自证 |
 | 未推送提交 | 64(内容未入库) | **内容缺口 0**:fork `main`(实测当前 head 用 `gh api repos/Goinbit/OpenMythos/git/ref/heads/main --jq '.object.sha'`)已含全部代码与日志(长分支上 `5b321ee`/`eb106ae` 两个 docs 提交的内容以 cherry-pick `77b18b8`/`7aa035a` 进主干;那两个 SHA 仍留本地未推,以冻住上游 PR #91 的 head) | −64 |
@@ -334,6 +339,8 @@ All work in this project must reference the phase/item below when opening a PR (
 19. **计时结论必须携带硬件坐标,而且坐标会翻转结论** — 同一份 config、同一 `torch 2.12.0+cpu`、同 `threads=1`:SDPA 在 `arm64/DEFAULT`(Apple M5)是 **1.079×**,在 x86_64 runner 上是 **1.371–1.649×**(P3.1 的 ≥1.5×:x86 八次里五次过、arm64 两次都不过 —— 区间随 payload 增加而加宽,见决策 20 第四层);MoE 正相反:arm64 **3.270×** vs x86 **2.588–3.137×**(≥3× 只在 x86 八次里两次达标)。等价差八条 CI run 都在 ~1e-07,所以差的只有 kernel/ISA。两条推论:①计时 payload 必须写 `cpu = platform.machine()/torch.backends.cpu.get_cpu_capability()` —— 第一条 CI payload 恰好没这个字段,于是它的 1.546× 只能靠"那是 GitHub runner"反推平台,这正是第 16 条要防的情形;②绝对值的 runner 摆动达 **2.04×**(backward 1838→3755 ms),所以 benchmark job 是 advisory:不能当闸的是绝对 CPU 毫秒。第 16 条的通用形态在此原样适用:坐标不该写在旁边等人去对照,而该由产出数字的那个进程打印出来
 20. **"哪个平台"不是环境说明,而是判据的一个维度 —— 连托管 runner 自己都不保证它** — `02a68f1` 把 `cpu` 写进 payload 的**下一条** trunk run 就变了值(`x86_64/AVX512` → `x86_64/AVX2`),而 job 定义、Python 腿、版本栈三者一字未动:GitHub Actions 只保证 OS 与架构族,不保证指令集能力类。后果不是"数字有点抖",而是**判据换了**:SDPA 从 1.52× 升到 1.65×(更过线),MoE 从 3.09/3.14× 掉到 2.59×(从达标变成不达标)。因此任何"比率回归闸"的键至少要是 `(cpu, seq_len, threads, torch)`,不能是 job 名 —— 单键会在新 runner 类上产出假阳性(性能"退化")或假阴性(退化被更 capability 的机器掩盖)。第 19 条讲"要报坐标",本条讲"坐标要进判据的键"。**但同轮内即被自己证伪了一半**:PR #10 的 run 落回 `AVX512`,却读出 SDPA 1.437× / MoE 2.672×,而前两条 AVX512 run 是 1.514/1.526 与 3.088/3.137 —— 同一能力类内部摆动 6.2%(比率)/ 17.4%(比率)/ 1.69×(绝对毫秒)。所以 `cpu` 是**可复现标签,不是可复现机器**:键之外还必须带**容差带与多次 run 的中位数**(或跨 run 的分布),否则"≥1.5×"这类点阈值在读数横跨阈值时根本不可判定 —— 此时正确产出是"x86 6 次里 5 次过、区间 1.437–1.649",而不是拿单次 run 宣布过线或退化。**第三条证据把"分组"这层也拆掉**:第二条 `AVX2` run(SDPA 1.512 / MoE 2.765)与第一条 `AVX2`(1.649 / 2.588)**方向相反**,于是"换能力类→两个比率同向位移"这个补记 1 的读法只是 n=1 巧合;按类摆开后两类 SDPA 区间(1.437–1.526 vs 1.512–1.649)**重叠**,即分组既不解释方差也不能给出确定结论,而组内可复现性还不等价(AVX2 两条 backward 相差 0.6%,AVX512 三条相差 1.69×)。**通用形态:当"按某个标签分组"不能让组间不相交时,该标签就只能当元数据报告,不能当判据的键**;判据的单位是"同坐标的多次 run 的分布"。**第四层证据(本批次)**:PR #10 合入后的 trunk payload 落回 `AVX512`,却读出 8 条里最低的 SDPA 1.3705×,低于**所有** `AVX2` 读数 —— 分组连"哪个平台更快"这种排序都给出错误的方向,所以标签进判据的键之外必须配容差带,且容差带要宽到能吃下类内 10% 级摆动
 21. **对外文档要由代码来判定,而且判定方式是执行而非检索** —— 决策 16 的第三次落地(前两次:ci.yml 结构 → `tests/test_ci_gate_stack.py`;版本栈 → `examples/ci_gate_stack.py`)。README 是与上游用户接触的那一面,却从未被任何测试读过;把它当契约测之后**首轮就判负 6 条**:`mythos_7b`(仓库里从未存在过)、`torch.linalg.eigvals(A)` 求 ρ(A)(`LTIInjection.get_A()` 返回 1-D 对角 `(dim,)`,该调用直接 `RuntimeError`)、两处训练入口指向 P4.5 已弃用的 `3b_fine_web_edu.py`  shim、`Parallelism | PyTorch DDP`(实为 FSDP `FULL_SHARD` + `ModuleWrapPolicy`)、`Precision | float16 + GradScaler`(`training/` 里根本没有 scaler)。**方法学差异决定抓出什么**:链接可达性和 preset 名单靠 grep 就能测,但 `eigvals` 那条只有把 README 的 Usage 代码块 `exec` 出来才会暴露 —— "跑文档"比"读文档"强一档,因为它复现的是用户的动作。三类处置各不同:假声明**改文档**(不放宽测试)、真声明**保留并写进闸**(badge 版本 / `[flash]` extra / AdamW / 30B tokens / warmup+half-cosine / 7 个 preset 表数字)、无法在本机证明的**加诚实边界**(深度外推:内部预注册实验已判负,README 的"more loops at inference"叙事必须挂那条负结果的链接)。附带覆盖方向也要反转:不只测"README 提到的 preset 存在",还测"**`variants.py` 每个 preset 都被 README 提到**" —— 否则把名字删掉就能通过闸门。另附:README snippet 用 `generate(n_loops=8)` 会让第 4 条 `LoRAAdapter` extrapolation warning 出现 —— 这是文档示例越过 `max_loop_iters` 的正常后果,不是回归,下一批不要试图"修掉"它
+22. **测试绿灯不等于验收完成,完成度必须逐条对照实现与证据** —— 2026-11-27 三 Agent 审计确认:350→354 项测试、CI 5/5、97% 行覆盖率都真实,但 Stage 3/4 多项验收仍缺证据或与代码直接冲突。完成标记只能覆盖“已实现且有对应生产路径回归”的项;CPU 微基准不能替代 3B GPU 门槛,shape/gradient-flow 不能替代数值/梯度等价。当前快照据此撤销“0 技术债”并降级 Stage 1/3/4。
+23. **ACT 正确性优先于动态 token 裁剪,不能为省 flops 重新引入形状同步** —— P1.2 曾尝试按 active token 动态切片,但 CUDA 上动态形状会引入同步并破坏 P3.5 的固定循环约束。最终采用优化计划中的保守方案:halted token 的 hidden 与 KV 上下文冻结,后续 Transformer/LoRA/LTI/ACT 输出完全门控;最后一轮消耗剩余权重。dense Transformer flops 仍在,明确记为未完成性能项,不伪装成“真正跳过计算”。
 
 ---
 
@@ -354,6 +361,13 @@ All work in this project must reference the phase/item below when opening a PR (
 - **P5.4 Paged KV Cache** — 扩展 `StaticKVCache` 设计支持 8K+ decode · vLLM PagedAttention 兼容
 - **P5.5 长上下文 32K+** — 移除 `_causal_mask` 显式分配 · `variants.py` 中 `max_seq_len=1_000_000` 降级
 - **fp16 路径缺动态 loss scaling**(本批次审 README 时顺带发现,按外科原则只写不改) — `training/` 全仓无 `GradScaler`(实测 `grep -rn "GradScaler" training/` 零命中,仅 `examples/train_small_lm.py:129-135` 有),因此 `run_3b.py` 在 GPU 非 bf16 时选择的 fp16 autocast 是**裸 fp16**:loss scale 恒为 1,梯度下溢会静默变成"训练不动"而非报错。正确修法与硬件一起验:开 `torch.amp.GradScaler("cuda", enabled=amp and dtype==torch.float16)` + `scaler.step/unwrap`,或直接规定 GPU 用 bf16(现有代码本就 bf16 优先)。README 已改为如实写"no dynamic loss scaler on the fp16 path",所以这条现在是**代码欠债而不是文档欠债**
+
+### 🟢 本地可做 · 按审计优先级推进
+
+1. **训练安全(P0.2/P0.5/P4.5)** — 补 NaN/Inf loss 注入回归、梯度有限性阻断、fp16 GradScaler;验证集改真 held-out,FSDP eval 所有 rank 参与;生产 checkpoint/optimizer roundtrip 与真实 DataLoader 前十步复现。
+2. **P3.2 真正向量化** — 移除专家 Python 循环与 `.tolist()` 主机同步;前向及逐参数梯度对照旧实现;64 专家同坐标 benchmark 报分布。
+3. **P3.3/P3.5/P3.7 证据补洞** — 构造期预分配、512 步分配计数、greedy 一致;ACT sync 计数与耗时;loop embedding 无前向临时分配。
+4. **文档/闸门纠偏** — 删除 README FlashAttention 2 假声明;扩展 README 契约到实际未覆盖数字;AGENTS/CLAUDE 镜像一致性进 CI;快照数字由 artifact/命令生成。
 
 ### 🟢 本地可做 · 低价值清扫
 - **ruff 升版迁移(0.15.8 → 0.17+)** — 144 处风格项:`I001` 35 / `UP045` 26 / `PLR0402` 16 / `UP006` 16 / `RUF022` 8 / `RUF059` 8,其余零散;115 处 `--fix` 可自动。当前用精确 pin 规避,真要升版则先扫这批
@@ -415,6 +429,34 @@ All work in this project must reference the phase/item below when opening a PR (
 ---
 
 ## 进度条目(倒序,最新在上)
+
+## 2026-11-27 · 三 Agent 审计纠偏 + P1.2/P2.1 ACT 生产路径修复
+
+**分支:** OpenMythos `fix/act-halted-computation`(自 fork `main` `c7ef525` 起)· **commits:** `2b4c66f` + 本条目 docs 提交 → PR [#12](https://github.com/Goinbit/OpenMythos/pull/12);代码 run [`45855556139`](https://github.com/Goinbit/OpenMythos/actions/runs/45855556139) **5/5 success**
+**Agents:** 3 个并行(实现/测试 · CI/benchmark 证据 · 文档/规划)· **完成 IDs:** **P1.2, P2.1**(保守门控方案;dense flops 未消除)
+**约束执行:** 只动 fork 短分支与 fork 内 PR;上游 PR #91 head 仍 `66c40bb`;未 squash、未删 head 分支。
+
+### ✅ 完成
+- **先审计再修**:三 Agent 交叉核对实现、测试、CI artifact 与文档,确认 350→354 项测试和 CI 绿灯真实,但 Stage 3/4 “全部完成”及“0 技术债”过强;快照已降级并列出实证缺口。
+- **P1.2 正确性**:[open_mythos/recurrence/block.py:120-170](file:///Users/macos/Desktop/Claude/OpenMythos/open_mythos/recurrence/block.py#L120-L170) 对 halted token 冻结 loop embedding、hidden 与 KV 上下文;后续 Transformer/LoRA/LTI/ACT 输出用 `torch.where` 完全门控。保留 P3.5 固定循环,不引入 `.all()`/动态形状同步。
+- **P2.1 权重守恒**:最后一轮无论是否达到阈值都消耗 `1-cumulative_p`,修复低 halt 概率下循环预算耗尽时权重和仅 `0.0001816`、输出近零的问题。
+- **生产路径回归**:[tests/test_main.py:739-931](file:///Users/macos/Desktop/Claude/OpenMythos/tests/test_main.py#L739-L931) 删除复制生产逻辑的 instrumented forward,改用真实模块钩子;覆盖低概率守恒、后续污染隔离、混合 halt 梯度、GQA/MLA 冻结缓存、强制 halt 输出一致。
+
+### 📊 测试变化
+- before:350 passed / 0 skipped / 4 warnings → after:**354 passed / 0 skipped / 4 warnings**(净 +4;原复制逻辑测试改为生产路径测试)
+- 覆盖率 **97% / 1030 stmts / 33 miss**;`recurrence/block.py` **100%**;mypy **0 errors / 35 files**;ruff 全过
+- benchmark smoke(arm64/DEFAULT, seq256, threads1, repeat3):SDPA **1.0967×**、MoE **3.1997×**,等价差 `2.09e-7` / `1.49e-7`;prefill 127.439ms、backward 395.109ms、decode 40.561ms/token。只作 smoke,不改变 CPU advisory 判据
+- 通道内证据:PR #12 代码 run `45855556139` **5/5**,双腿与类型/风格/benchmark 全 success
+
+### 🔑 关键决策 / 发现
+- **动态 token 裁剪与 P3.5 冲突**:曾实现 active-token 子集以减少 FFN/LoRA/LTI/ACT flops,但 CUDA 动态形状会引入同步;最终回退到优化计划中的保守门控方案。正确性已修,dense Transformer flops 仍记为未完成性能项。
+- **halted cache 语义纠偏**:旧注释称“halted 不再写 cache”不实。新实现仍写每个 loop key,但写入的是 halt 后冻结的 K/V,供 active query 作上下文;测试逐位比较 GQA K/V 与 MLA `c_kv`/`k_rope`。
+- **审计发现的高风险项**:fp16 无 GradScaler/梯度有限性检查;FSDP eval 仅 rank0 且复用训练 shard;P3.2 仍有专家循环/`.tolist()`;P3.3 懒分配;README FlashAttention 2 假声明与 GradScaler 闸门盲点。均未在本 PR 混修。
+
+### 🧭 留到下阶段
+- 下一批按优先级修训练安全:P0.2 NaN loss 回归、梯度有限性、fp16 scaling、held-out + all-rank FSDP eval、生产 checkpoint roundtrip/DataLoader 复现。
+- 随后完成 P3.2 真正无专家 Python 循环/主机同步,并补梯度等价与同坐标 benchmark。
+- 文档闸下一步覆盖 Flash 声明、未覆盖数字与 AGENTS/CLAUDE 镜像一致性;合入后 trunk 证据留给下一批实测。
 
 ## 2026-11-24 · README 第一次被当成契约测:6 条对外声明当场判负,计时分布补到 8 条 CI payload
 

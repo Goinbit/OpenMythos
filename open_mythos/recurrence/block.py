@@ -121,30 +121,31 @@ class RecurrentBlock(nn.Module):
             # P3.7: use precomputed loop-index table. If depth extrapolates past
             # the trained max_loops, clamp to the last row (same spirit as LoRA).
             t_idx = min(t, self.loop_idx_table.shape[0] - 1)
-            h_loop = h + self.loop_idx_table[t_idx].to(dtype=h.dtype).view(1, 1, -1)
+            still_running = ~halted
+            running_mask = still_running.unsqueeze(-1)
+            h_loop = torch.where(
+                running_mask,
+                h + self.loop_idx_table[t_idx].to(dtype=h.dtype).view(1, 1, -1),
+                h,
+            )
             combined = self.norm(h_loop + e)
             cache_key = f"recurrent_loop_{t}"
             trans_out = self.block(combined, freqs_cis, mask, kv_cache, cache_key)
             trans_out = trans_out + self.lora(trans_out, t)
-            h_new = self.injection(h, e, trans_out)
-            # Gate the hidden-state update: halted positions keep h unchanged so
-            # their state is frozen at the iteration they halted on. Running
-            # positions take the fresh LTI update. This also prevents halted
-            # positions from writing new entries at later cache keys.
-            still_running_mask = (~halted).unsqueeze(-1).float()
-            h = h_new * still_running_mask + h * (1.0 - still_running_mask)
+            trans_out = torch.where(running_mask, trans_out, torch.zeros_like(trans_out))
+            h = torch.where(running_mask, self.injection(h, e, trans_out), h)
 
-            p = self.act(h)  # (B, T)
-            still_running = ~halted
+            p = self.act(h)
+            p = torch.where(still_running, p, torch.zeros_like(p))
 
             # ACT remainder trick: once cumulative_p + p crosses threshold,
-            # assign the remaining probability mass as the final weight.
-            # Gate by still_running so halted positions contribute exactly
-            # once (on the halting step) and zero thereafter — otherwise
-            # threshold<1 leaves a non-zero remainder that leaks every step.
+            # assign the remaining probability mass as the final weight. The
+            # last budgeted iteration also consumes the remainder so positions
+            # that never reach the threshold still produce a normalized mix.
             remainder = (1.0 - cumulative_p).clamp(min=0)
+            is_last = t == n_loops - 1
             weight = torch.where(
-                cumulative_p + p >= self.cfg.act_threshold,
+                (cumulative_p + p >= self.cfg.act_threshold) | is_last,
                 remainder,
                 p,
             )
@@ -152,14 +153,10 @@ class RecurrentBlock(nn.Module):
             h_out = h_out + weight.unsqueeze(-1) * h
 
             cumulative_p = cumulative_p + p * still_running.float()
-            halted = halted | (cumulative_p >= self.cfg.act_threshold)
+            halted = halted | (cumulative_p >= self.cfg.act_threshold) | is_last
 
-            # P3.5: early-exit removed. The previous `halted.all()` check forced
-            # a CPU<->GPU sync every iteration and blocked torch.compile.
-            # Halted positions are already gated out of h and h_out updates
-            # above, so extra iterations cost only the transformer call for
-            # already-halted tokens — an acceptable trade for sync-free loops.
-            # Inference (kv_cache != None) had the short-circuit disabled
-            # already, so removing it does not change decode behavior.
+            # P3.5: keep a fixed loop count to avoid a CPU<->GPU sync. Halted
+            # positions retain frozen hidden/cache context and their later
+            # Transformer/LoRA/LTI/ACT outputs are gated out above.
 
         return h_out
