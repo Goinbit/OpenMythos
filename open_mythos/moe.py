@@ -85,10 +85,17 @@ class BiasRouter(nn.Module):
         scores = F.softmax(logits, dim=-1)
         _, topk_idx = (logits + self.router_bias).topk(self.topk, dim=-1)
         topk_scores = scores.gather(-1, topk_idx)
-        # .clamp(min=1e-9) guards against fp16/bf16 softmax underflow (P0.3).
-        topk_scores = topk_scores / topk_scores.sum(dim=-1, keepdim=True).clamp(
-            min=1e-9
+        # Normalize in fp32: 1e-9 underflows to zero in fp16, so a dtype-local
+        # clamp still divides 0/0 when every selected softmax value underflows.
+        normalized = topk_scores.float()
+        denominator = normalized.sum(dim=-1, keepdim=True)
+        uniform = torch.full_like(normalized, 1.0 / self.topk)
+        normalized = torch.where(
+            denominator > 0,
+            normalized / denominator.clamp(min=1e-9),
+            uniform,
         )
+        topk_scores = normalized.to(dtype=scores.dtype)
         return topk_idx, topk_scores, scores
 
 
