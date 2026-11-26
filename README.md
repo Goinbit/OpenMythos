@@ -159,7 +159,7 @@ Key design choices:
 | Dataset | `HuggingFaceFW/fineweb-edu` (`sample-10BT` by default, swap to `sample-100BT` or `default` for full run) |
 | Tokenizer | `openai/gpt-oss-20b` via `MythosTokenizer` |
 | Parallelism | PyTorch FSDP (full shard) via `torchrun`, sharded streaming dataset |
-| Precision | bfloat16 when the GPU supports it, else float16 — FSDP `MixedPrecision` under `torchrun`, `torch.amp.autocast` on a single GPU. No dynamic loss scaler on the fp16 path (`examples/train_small_lm.py` is the only script that uses `GradScaler`) |
+| Precision | bfloat16 when the GPU supports it, else float16 — FSDP `MixedPrecision` under `torchrun`, `torch.amp.autocast` on a single GPU, with dynamic loss scaling on the fp16 path |
 | Schedule | Linear warmup (2000 steps) → cosine decay |
 | Target | 30B tokens (~Chinchilla-adjusted for looped architecture) |
 
