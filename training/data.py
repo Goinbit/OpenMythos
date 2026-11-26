@@ -8,6 +8,7 @@ construction ``main()`` previously did inline.
 """
 from __future__ import annotations
 
+import hashlib
 import random
 from collections import deque
 
@@ -20,6 +21,14 @@ from datasets import load_dataset
 # ---------------------------------------------------------------------------
 # Dataset
 # ---------------------------------------------------------------------------
+
+
+def _is_validation_document(sample: dict, validation_fraction: float) -> bool:
+    """Assign a document to the held-out bucket by a stable content hash."""
+    document_id = str(sample.get("id", sample["text"])).encode("utf-8")
+    digest = hashlib.blake2b(document_id, digest_size=8).digest()
+    bucket = int.from_bytes(digest, "big") / float(2**64)
+    return bucket < validation_fraction
 
 
 class FineWebEduDataset(IterableDataset):
@@ -38,7 +47,16 @@ class FineWebEduDataset(IterableDataset):
     cost of a true resumable loader.
     """
 
-    def __init__(self, encoding, seq_len: int, subset: str, rank: int, world_size: int):
+    def __init__(
+        self,
+        encoding,
+        seq_len: int,
+        subset: str,
+        rank: int,
+        world_size: int,
+        split: str = "train",
+        validation_fraction: float = 0.01,
+    ):
         """
         Args:
             encoding   -- tokenizer exposing `.encode(str) -> list[int]`
@@ -46,12 +64,21 @@ class FineWebEduDataset(IterableDataset):
             subset     -- FineWeb-Edu config name (e.g. "sample-10BT", "default")
             rank       -- global rank of this process within the distributed job
             world_size -- total number of distributed processes
+            split      -- "train" excludes the held-out bucket; "validation"
+                          yields only that bucket
+            validation_fraction -- stable document-hash fraction reserved for eval
         """
+        if split not in ("train", "validation"):
+            raise ValueError(f"split must be 'train' or 'validation', got {split!r}")
+        if not 0.0 < validation_fraction < 1.0:
+            raise ValueError("validation_fraction must be in (0, 1)")
         self.encoding = encoding
         self.seq_len = seq_len
         self.subset = subset
         self.rank = rank
         self.world_size = world_size
+        self.split = split
+        self.validation_fraction = validation_fraction
 
     def __iter__(self):
         """
@@ -82,6 +109,9 @@ class FineWebEduDataset(IterableDataset):
         buf: deque[int] = deque()
         chunk_len = self.seq_len + 1
         for sample in ds:
+            is_validation = _is_validation_document(sample, self.validation_fraction)
+            if is_validation != (self.split == "validation"):
+                continue
             buf.extend(self.encoding.encode(sample["text"]))
             while len(buf) >= chunk_len:
                 chunk = [buf.popleft() for _ in range(chunk_len)]
